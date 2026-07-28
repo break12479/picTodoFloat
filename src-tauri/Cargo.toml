@@ -1,0 +1,30 @@
+[package]
+name = "pictodo-float"
+version = "0.0.1"
+description = "PicTodo Float — P0 spike"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "pictodo_float_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+arboard = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = "0.25"
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.dev]
+incremental = true

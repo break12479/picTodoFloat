@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "PicTodo Float capabilities",
+  "windows": ["main", "pin-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-size",
+    "core:window:allow-close",
+    "core:window:allow-set-always-on-top",
+    "core:webview:allow-create-webview-window",
+    "opener:default",
+    "dialog:default",
+    "window-state:default"
+  ]
+}

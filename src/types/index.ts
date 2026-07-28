@@ -1,0 +1,37 @@
+export interface TaskImage {
+  id: number;
+  task_id: number;
+  file_path: string;
+  thumb_path: string;
+  original_name: string | null;
+  file_size: number | null;
+  sort_order: number;
+}
+
+export interface Task {
+  id: number;
+  content: string;
+  completed: boolean;
+  completed_at: string | null;
+  sort_order: number;
+  group_id: number | null;
+  pinned: boolean;
+  doc_path: string | null;
+  created_at: string;
+  updated_at: string;
+  images: TaskImage[];
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Settings {
+  opacity: number;
+  auto_start: boolean;
+  notes_folder: string | null;
+  theme: "dark" | "light";
+}
