@@ -4,6 +4,7 @@ import type {
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 
+import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import DocButton from "./DocButton";
@@ -37,15 +38,20 @@ export default function TaskItem({
   const addImage = useTaskStore((s) => s.addImage);
   const deleteImage = useTaskStore((s) => s.deleteImage);
   const pin = useTaskStore((s) => s.pin);
+  const archiveOne = useTaskStore((s) => s.archiveOne);
   const moveToGroup = useTaskStore((s) => s.moveToGroup);
   const clickSelect = useTaskStore((s) => s.clickSelect);
   const groups = useTaskStore((s) => s.groups);
   const selected = useTaskStore((s) => s.selectedIds.includes(task.id));
+  const docEnabled = useSettingsStore((s) => s.settings?.doc_enabled ?? true);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.content);
   const [dragOver, setDragOver] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
 
   const autoGrow = () => {
     const el = inputRef.current;
@@ -61,6 +67,20 @@ export default function TaskItem({
       autoGrow();
     }
   }, [editing]);
+
+  // 文本超过限高（约 4 行）时可展开弹层查看全文
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) {
+      setOverflowing(false);
+      return;
+    }
+    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [task.content, editing]);
 
   const commit = () => {
     setEditing(false);
@@ -147,6 +167,7 @@ export default function TaskItem({
           />
         ) : (
           <span
+            ref={textRef}
             className="task-text"
             onDoubleClick={() => {
               setDraft(task.content);
@@ -158,9 +179,11 @@ export default function TaskItem({
           </span>
         )}
 
-        <div className="task-doc" onClick={(e) => e.stopPropagation()}>
-          <DocButton task={task} />
-        </div>
+        {docEnabled && (
+          <div className="task-doc" onClick={(e) => e.stopPropagation()}>
+            <DocButton task={task} />
+          </div>
+        )}
 
         <div className="task-actions" onClick={(e) => e.stopPropagation()}>
           <span className="actions-trigger" title="更多操作">
@@ -196,6 +219,14 @@ export default function TaskItem({
             </select>
 
             <button
+              className="task-archive"
+              onClick={() => archiveOne(task.id)}
+              title="归档"
+            >
+              🗄
+            </button>
+
+            <button
               className="task-del"
               onClick={() => onRequestDelete(task)}
               title="删除任务"
@@ -206,10 +237,53 @@ export default function TaskItem({
         </div>
       </div>
 
+      {overflowing && !editing && (
+        <div className="task-more">
+          <button
+            className="text-expand-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(true);
+            }}
+          >
+            展开全文
+          </button>
+        </div>
+      )}
+
       <ImageThumbnailRow
         images={task.images}
         onDelete={(imageId) => deleteImage(task.id, imageId)}
       />
+
+      {expanded && (
+        <div
+          className="dialog-overlay"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(false);
+          }}
+        >
+          <div className="dialog text-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="dialog-msg text-modal-content">{task.content}</p>
+            <div className="dialog-actions">
+              <button
+                className="btn ghost"
+                onClick={() => {
+                  setExpanded(false);
+                  setDraft(task.content);
+                  setEditing(true);
+                }}
+              >
+                编辑
+              </button>
+              <button className="btn ghost" onClick={() => setExpanded(false)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

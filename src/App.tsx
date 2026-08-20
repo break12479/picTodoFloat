@@ -12,6 +12,7 @@ import { useTaskStore } from "./stores/taskStore";
 export default function App() {
   const load = useTaskStore((s) => s.load);
   const error = useTaskStore((s) => s.error);
+  const toggleSearch = useTaskStore((s) => s.toggleSearch);
   const loadSettings = useSettingsStore((s) => s.load);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 85);
   const theme = useSettingsStore((s) => s.settings?.theme ?? "dark");
@@ -49,6 +50,13 @@ export default function App() {
           PicTodo Float
         </span>
         <div className="win-controls">
+          <button
+            className="win-btn"
+            title="搜索（Ctrl+F）"
+            onClick={toggleSearch}
+          >
+            🔍
+          </button>
           <button
             className="win-btn"
             title="设置"

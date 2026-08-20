@@ -17,6 +17,8 @@ export interface Task {
   group_id: number | null;
   pinned: boolean;
   doc_path: string | null;
+  archived: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
   images: TaskImage[];
@@ -34,4 +36,7 @@ export interface Settings {
   auto_start: boolean;
   notes_folder: string | null;
   theme: "dark" | "light";
+  hide_completed: boolean;
+  auto_archive_days: number; // 0 = 关闭
+  doc_enabled: boolean;
 }

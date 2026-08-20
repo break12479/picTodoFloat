@@ -13,6 +13,9 @@ interface SettingsState {
   setAutoStart: (enabled: boolean) => Promise<void>;
   setTheme: (theme: "dark" | "light") => Promise<void>;
   setDataDir: (dir: string | null) => Promise<void>;
+  setHideCompleted: (hide: boolean) => Promise<void>;
+  setAutoArchiveDays: (days: number) => Promise<void>;
+  setDocEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -66,5 +69,35 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ dataDir });
     // 图片绝对路径随数据位置变化，重新拉取任务
     await useTaskStore.getState().load();
+  },
+
+  setHideCompleted: async (hide) => {
+    set((s) => ({
+      settings: s.settings ? { ...s.settings, hide_completed: hide } : s.settings,
+    }));
+    const settings = await invoke<Settings>("update_settings", {
+      hideCompleted: hide,
+    });
+    set({ settings });
+  },
+
+  setAutoArchiveDays: async (days) => {
+    set((s) => ({
+      settings: s.settings ? { ...s.settings, auto_archive_days: days } : s.settings,
+    }));
+    const settings = await invoke<Settings>("update_settings", {
+      autoArchiveDays: days,
+    });
+    set({ settings });
+  },
+
+  setDocEnabled: async (enabled) => {
+    set((s) => ({
+      settings: s.settings ? { ...s.settings, doc_enabled: enabled } : s.settings,
+    }));
+    const settings = await invoke<Settings>("update_settings", {
+      docEnabled: enabled,
+    });
+    set({ settings });
   },
 }));

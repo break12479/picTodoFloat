@@ -310,3 +310,59 @@ src-tauri/src/
 2. **透明 + 置顶 + WebView2**：Windows 上透明窗口偶有渲染/点击穿透问题，需实测。
 3. **缩略图性能**：50 条 ×2 图的缩略图生成放异步，避免阻塞；原图按需加载。
 4. **笔记文件夹权限**：用户指向 Obsidian/云盘目录时，fs capability scope 需动态放行所选目录。
+
+------
+
+## 十、V1.1 增量（2026-08，归档 / 搜索 / 分组拖拽等）
+
+在 P0-P6 基线之上新增的字段、命令与前端能力，均通过 `PRAGMA user_version` migration v3 落地（`db/mod.rs`）。
+
+### 10.1 Schema 变更（v3）
+
+```sql
+ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN archived_at TEXT;
+ALTER TABLE settings ADD COLUMN hide_completed INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE settings ADD COLUMN auto_archive_days INTEGER NOT NULL DEFAULT 0; -- 0 = 关闭
+ALTER TABLE settings ADD COLUMN doc_enabled INTEGER NOT NULL DEFAULT 1;
+CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived);
+```
+
+`get_tasks`/排序相关查询默认 `WHERE archived = 0`；归档任务改由 `get_archived_tasks` 单独查询（`archived_at DESC`）。
+
+### 10.2 新增 Command
+
+| Command | 参数 | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `get_archived_tasks` | — | `Task[]` | 已归档任务，最近归档在前 |
+| `archive_task` | `id, archived` | `Task` | 单条归档/取消归档 |
+| `archive_tasks` | `ids[], archived` | `bool` | 批量归档（多选） |
+| `reorder_groups` | `ordered_ids[]` | `bool` | 分组拖拽排序（命令 P4 时已建，本轮补上前端接线） |
+
+`get_tasks` 命令内部会先按 `settings.auto_archive_days` 顺带执行一次 `auto_archive_stale`（完成超过 N 天且未归档 → 自动归档），不需要常驻定时器。
+
+### 10.3 图片路径解析踩坑（重要）
+
+`toggle_task` / `update_task` / `pin_task` / `move_task_to_group` 早期实现直接返回 `db::tasks::*` 的裸 `Task`，**遗漏了 `image_svc::resolve_task_images()`**，导致返回给前端的图片路径是相对路径而非可用于 `convertFileSrc` 的绝对路径——表现为"任务勾选完成后缩略图裂开，取消完成也不恢复，只有点自动排序（走 `get_tasks`/`auto_sort` 的完整 resolve 链路）才会修好"。
+
+修复：新增 `image_svc::resolve_task(app, task) -> Task`（消费单个 `Task` 并解析其图片路径），所有**返回单个 `Task` 给前端**的 command 都必须经过它包一层，不能只在 `get_tasks`/`auto_sort` 这类返回列表的命令里做。`doc.rs` 已有的 `resolved()` 同款 helper 现改为直接复用这个函数。
+
+### 10.4 打包踩坑：`cargo build --release` ≠ 生产资源嵌入（重要）
+
+Tauri 判断"嵌入 `frontendDist` 静态资源"还是"连接 `devUrl` 开发服务器"，**不取决于 cargo 的 debug/release profile**，而是 `tauri-cli` 的 `tauri build` 流程本身控制的。直接裸跑 `cargo build --release`（跳过 `tauri build`）编出来的 exe 会一直尝试连 `http://localhost:1420`，双击运行显示 `ERR_CONNECTION_REFUSED`——之前发过一次这样的坏包。
+
+**结论：打包发布一律用 `npm run tauri build`（内部会先跑 `beforeBuildCommand: npm run build` 再正确编译+嵌入资源），禁止为图快直接 `cargo build --release`。** 验证手段：在 1420 端口起个假 HTTP 服务，跑编出来的 exe 看是否有请求打过去（有 = 没嵌对，无 = 正常）。
+
+### 10.5 前端新增能力一览
+
+| 能力 | 关键实现 |
+| --- | --- |
+| 已完成项折叠 | `GroupSection` 按 `completed` 拆分 `activeItems`/`doneItems`；全局开关 `settings.hide_completed`（重启记忆，默认折叠） |
+| 归档 | 单条/批量归档按钮 + `ArchivePanel`（查看/取消归档/彻底删除）+ 设置里「完成 N 天后自动归档」下拉 |
+| 分组拖拽排序 | `GroupSection` 内部 `useSortable({id:"group-{id}", data:{type:"group"}})`，与任务拖拽共用同一个 `DndContext`，靠 `active.data.current.type` 分支处理，避免嵌套 `DndContext` 的坑 |
+| 默认组为空时隐藏 | `TaskList` 里 `view.def.length > 0` 才渲染 |
+| 新建任务选分组 | `TaskInput` 加分组下拉，`add(content, groupId)` |
+| 输入框便签全屏模式 | `TaskInput` 展开态用 `position:fixed` 盖住标题栏以下整个内容区；收起不清空草稿 |
+| 搜索 | 标题栏 🔍（或 Ctrl+F）打开搜索栏，`taskStore` 存 `searchQuery`/`searchScope`；纯前端按 `containerKeyOf` 范围 + 内容子串过滤，复用 `buildView` 不改渲染结构；激活搜索时禁用拖拽（避免用过滤后的局部列表重排导致 `sort_order` 错乱） |
+| 新建分组工具栏隐藏 | `.list-toolbar` 默认 `max-height:0` 不占空间，`.app:hover` 时用 `max-height` 过渡展开——**踩过坑**：最早用 `position:fixed` 覆盖层实现，展开时会盖住第一个分组的标题和操作按钮，改回正常文档流的高度折叠方案后问题消失 |
+| 悬浮预览窗两个 bug | 双击关闭前"闪一下全屏"（`data-tauri-drag-region` 触发系统原生双击最大化）与拖到屏幕边缘触发 Windows 贴靠，统一用 `maximizable:false` + `resizable:false` 解决（缩放走程序化 `setSize()`，不受影响） |

@@ -2,9 +2,12 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
+  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
+import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import SortableTaskItem from "./SortableTaskItem";
@@ -32,6 +35,8 @@ export default function GroupSection({
   const autoSort = useTaskStore((s) => s.autoSort);
   const renameGroup = useTaskStore((s) => s.renameGroup);
   const deleteGroup = useTaskStore((s) => s.deleteGroup);
+  const hideCompleted = useSettingsStore((s) => s.settings?.hide_completed ?? true);
+  const setHideCompleted = useSettingsStore((s) => s.setHideCompleted);
 
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -41,11 +46,54 @@ export default function GroupSection({
     id: `container:${containerKey}`,
   });
 
-  const ids = items.map((t) => t.id);
+  // 分组本身的拖拽排序：仅用户分组参与（置顶/默认组固定位置，不可拖）
+  const {
+    attributes: groupAttrs,
+    listeners: groupListeners,
+    setNodeRef: setGroupNodeRef,
+    transform: groupTransform,
+    transition: groupTransition,
+    isDragging: groupDragging,
+  } = useSortable({
+    id: `group-${groupId ?? containerKey}`,
+    disabled: !isUserGroup,
+    data: { type: "group" },
+  });
+
+  // 置顶分区不参与"已完成折叠"（置顶任务永远整体可见）
+  const splitCompleted = containerKey !== "pinned";
+  const activeItems = splitCompleted ? items.filter((t) => !t.completed) : items;
+  const doneItems = splitCompleted ? items.filter((t) => t.completed) : [];
+  const showDone = !splitCompleted || !hideCompleted;
+  const visibleItems = showDone ? items : activeItems;
+  const ids = visibleItems.map((t) => t.id);
 
   return (
-    <section className={`group-section ${highlight ? "drop-over" : ""}`}>
+    <section
+      ref={setGroupNodeRef}
+      style={{
+        transform: CSS.Transform.toString(groupTransform),
+        transition: groupTransition,
+        opacity: groupDragging ? 0.5 : 1,
+      }}
+      className={`group-section ${highlight ? "drop-over" : ""} ${
+        groupDragging ? "group-dragging" : ""
+      }`}
+    >
       <header className="group-header">
+        {isUserGroup ? (
+          <span
+            className="group-drag-handle"
+            title="拖拽调整分组顺序"
+            {...groupAttrs}
+            {...groupListeners}
+          >
+            ⠿
+          </span>
+        ) : (
+          <span className="group-drag-handle placeholder-handle" />
+        )}
+
         <button
           className="group-collapse"
           onClick={() => setCollapsed((c) => !c)}
@@ -111,13 +159,33 @@ export default function GroupSection({
       {!collapsed && (
         <div ref={setNodeRef} className="group-body">
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            {items.map((t) => (
+            {activeItems.map((t) => (
               <SortableTaskItem
                 key={t.id}
                 task={t}
                 onRequestDelete={onRequestDelete}
               />
             ))}
+
+            {splitCompleted && doneItems.length > 0 && (
+              <button
+                className="done-toggle"
+                onClick={() => setHideCompleted(!hideCompleted)}
+                title={hideCompleted ? "展开已完成" : "折叠已完成"}
+              >
+                <span className="done-toggle-caret">{hideCompleted ? "▸" : "▾"}</span>
+                已完成 ({doneItems.length})
+              </button>
+            )}
+
+            {showDone &&
+              doneItems.map((t) => (
+                <SortableTaskItem
+                  key={t.id}
+                  task={t}
+                  onRequestDelete={onRequestDelete}
+                />
+              ))}
           </SortableContext>
 
           {items.length === 0 && (

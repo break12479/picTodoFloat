@@ -12,6 +12,8 @@ fn row_to_task(row: &Row) -> rusqlite::Result<Task> {
         group_id: row.get("group_id")?,
         pinned: row.get::<_, i64>("pinned")? != 0,
         doc_path: row.get("doc_path")?,
+        archived: row.get::<_, i64>("archived")? != 0,
+        archived_at: row.get("archived_at")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         images: Vec::new(),
@@ -30,26 +32,8 @@ fn row_to_image(row: &Row) -> rusqlite::Result<TaskImage> {
     })
 }
 
-/// 按 tech-design §5.3 排序规则返回完整列表（含各任务图片）。
-/// 分组 join 待 P4 完善；当前：置顶优先 → 未完成(按 sort_order) → 已完成(completed_at DESC)。
-pub fn get_all(conn: &Connection) -> Result<Vec<Task>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT * FROM tasks
-             ORDER BY pinned DESC,
-                      completed ASC,
-                      completed_at DESC,
-                      sort_order ASC,
-                      id ASC",
-        )
-        .map_err(|e| e.to_string())?;
-    let tasks: Vec<Task> = stmt
-        .query_map([], row_to_task)
-        .map_err(|e| e.to_string())?
-        .collect::<rusqlite::Result<_>>()
-        .map_err(|e| e.to_string())?;
-
-    // 载入每个任务的图片（P3 起有数据；此处统一填充）
+/// 载入每个任务的图片（P3 起有数据；此处统一填充）。
+fn attach_images(conn: &Connection, tasks: Vec<Task>) -> Result<Vec<Task>, String> {
     let mut img_stmt = conn
         .prepare("SELECT * FROM task_images WHERE task_id = ?1 ORDER BY sort_order ASC, id ASC")
         .map_err(|e| e.to_string())?;
@@ -63,6 +47,47 @@ pub fn get_all(conn: &Connection) -> Result<Vec<Task>, String> {
         result.push(t);
     }
     Ok(result)
+}
+
+/// 按 tech-design §5.3 排序规则返回完整列表（含各任务图片）。归档任务不在此列，见 [`get_archived`]。
+/// 分组 join 待 P4 完善；当前：置顶优先 → 未完成(按 sort_order) → 已完成(completed_at DESC)。
+pub fn get_all(conn: &Connection) -> Result<Vec<Task>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT * FROM tasks
+             WHERE archived = 0
+             ORDER BY pinned DESC,
+                      completed ASC,
+                      completed_at DESC,
+                      sort_order ASC,
+                      id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let tasks: Vec<Task> = stmt
+        .query_map([], row_to_task)
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+    attach_images(conn, tasks)
+}
+
+/// 已归档任务，最近归档的在前。
+pub fn get_archived(conn: &Connection) -> Result<Vec<Task>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT * FROM tasks
+             WHERE archived = 1
+             ORDER BY archived_at DESC, id DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let tasks: Vec<Task> = stmt
+        .query_map([], row_to_task)
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<_>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+    attach_images(conn, tasks)
 }
 
 pub fn get_one(conn: &Connection, id: i64) -> Result<Task, String> {
@@ -160,6 +185,57 @@ pub fn set_pinned(conn: &Connection, id: i64, pinned: bool) -> Result<Task, Stri
         return Err(format!("任务 {id} 不存在"));
     }
     get_one(conn, id)
+}
+
+/// 归档/取消归档单个任务。
+pub fn set_archived(conn: &Connection, id: i64, archived: bool) -> Result<Task, String> {
+    let n = conn
+        .execute(
+            "UPDATE tasks
+             SET archived = ?1,
+                 archived_at = CASE WHEN ?1 = 1 THEN datetime('now') ELSE NULL END,
+                 updated_at = datetime('now')
+             WHERE id = ?2",
+            params![archived as i64, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Err(format!("任务 {id} 不存在"));
+    }
+    get_one(conn, id)
+}
+
+/// 批量归档/取消归档（多选）。
+pub fn set_archived_many(conn: &Connection, ids: &[i64], archived: bool) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for id in ids {
+        tx.execute(
+            "UPDATE tasks
+             SET archived = ?1,
+                 archived_at = CASE WHEN ?1 = 1 THEN datetime('now') ELSE NULL END,
+                 updated_at = datetime('now')
+             WHERE id = ?2",
+            params![archived as i64, id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 完成超过 `days` 天且未归档的任务自动归档。`days <= 0` 时不做任何事（由调用方保证）。
+pub fn auto_archive_stale(conn: &Connection, days: i64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE tasks
+         SET archived = 1, archived_at = datetime('now')
+         WHERE archived = 0
+           AND completed = 1
+           AND completed_at IS NOT NULL
+           AND completed_at <= datetime('now', ?1)",
+        params![format!("-{days} days")],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// 移动任务到分组（None = 默认组），落到目标组末尾。

@@ -45,12 +45,29 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             .map_err(|e| format!("写入 user_version 失败: {e}"))?;
     }
 
+    if version < 3 {
+        conn.execute_batch(MIGRATION_V3)
+            .map_err(|e| format!("迁移 v3 失败: {e}"))?;
+        conn.execute_batch("PRAGMA user_version = 3;")
+            .map_err(|e| format!("写入 user_version 失败: {e}"))?;
+    }
+
     Ok(())
 }
 
 // v2：主题（dark / light）
 const MIGRATION_V2: &str = r#"
 ALTER TABLE settings ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark';
+"#;
+
+// v3：归档、已完成折叠开关、自动归档天数、关联文档功能开关
+const MIGRATION_V3: &str = r#"
+ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN archived_at TEXT;
+ALTER TABLE settings ADD COLUMN hide_completed INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE settings ADD COLUMN auto_archive_days INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE settings ADD COLUMN doc_enabled INTEGER NOT NULL DEFAULT 1;
+CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived);
 "#;
 
 const MIGRATION_V1: &str = r#"

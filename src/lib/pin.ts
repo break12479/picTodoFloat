@@ -12,7 +12,10 @@ export function openPinWindow(img: TaskImage) {
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: true,
+    // 禁用原生可调整大小：缩放靠滚轮 setSize() 编程式实现，不依赖系统边框拖拽；
+    // 顺带避免拖到屏幕边缘触发 Windows 半屏/贴靠（Snap 只对可调整大小的窗口生效）。
+    resizable: false,
+    maximizable: false,
     shadow: false,
     width: 480,
     height: 360,

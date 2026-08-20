@@ -15,11 +15,17 @@ export default function SettingsPanel({ onClose }: Props) {
   const setTheme = useSettingsStore((s) => s.setTheme);
   const dataDir = useSettingsStore((s) => s.dataDir);
   const setDataDir = useSettingsStore((s) => s.setDataDir);
+  const setHideCompleted = useSettingsStore((s) => s.setHideCompleted);
+  const setAutoArchiveDays = useSettingsStore((s) => s.setAutoArchiveDays);
+  const setDocEnabled = useSettingsStore((s) => s.setDocEnabled);
 
   const current = settings?.notes_folder;
   const opacity = settings?.opacity ?? 85;
   const autoStart = settings?.auto_start ?? false;
   const theme = settings?.theme ?? "dark";
+  const hideCompleted = settings?.hide_completed ?? true;
+  const autoArchiveDays = settings?.auto_archive_days ?? 0;
+  const docEnabled = settings?.doc_enabled ?? true;
 
   const pickDataDir = async () => {
     const selected = await open({ directory: true, multiple: false });
@@ -45,6 +51,7 @@ export default function SettingsPanel({ onClose }: Props) {
           </button>
         </header>
 
+        <div className="settings-body">
         <div className="settings-row">
           <label>主题</label>
           <div className="settings-theme">
@@ -89,6 +96,54 @@ export default function SettingsPanel({ onClose }: Props) {
         </div>
 
         <div className="settings-row">
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={hideCompleted}
+              onChange={(e) => setHideCompleted(e.target.checked)}
+            />
+            折叠已完成任务
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <label>
+            完成后自动归档
+            <span className="settings-val">
+              {autoArchiveDays > 0 ? ` ${autoArchiveDays} 天` : " 关闭"}
+            </span>
+          </label>
+          <select
+            className="settings-select"
+            value={autoArchiveDays}
+            onChange={(e) => setAutoArchiveDays(Number(e.target.value))}
+          >
+            <option value={0}>关闭</option>
+            <option value={3}>3 天后</option>
+            <option value={7}>7 天后</option>
+            <option value={14}>14 天后</option>
+            <option value={30}>30 天后</option>
+          </select>
+          <p className="settings-hint">
+            已完成任务超过所选天数后自动归档，从主列表移入「归档」。
+          </p>
+        </div>
+
+        <div className="settings-row">
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={docEnabled}
+              onChange={(e) => setDocEnabled(e.target.checked)}
+            />
+            启用关联文档功能
+          </label>
+          <p className="settings-hint">
+            关闭后仅隐藏任务上的 📄 入口，已有的文档关联不会断开。
+          </p>
+        </div>
+
+        <div className="settings-row">
           <label>笔记文件夹</label>
           <div className="settings-folder">
             <span className="folder-path" title={current ?? ""}>
@@ -129,6 +184,7 @@ export default function SettingsPanel({ onClose }: Props) {
             切换时会把现有数据复制到新位置（旧数据保留作备份，不会删除）。可放到
             坚果云 / OneDrive 等同步目录实现多设备。
           </p>
+        </div>
         </div>
       </div>
     </div>

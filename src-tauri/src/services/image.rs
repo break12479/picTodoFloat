@@ -33,6 +33,13 @@ pub fn resolve_task_images(app: &tauri::AppHandle, task: &mut crate::models::Tas
     }
 }
 
+/// 消费一个 Task，解析其图片路径后返回。任何返回单个 Task 给前端的命令都要走这个，
+/// 否则图片相对路径会覆盖前端已渲染的绝对路径，缩略图裂开。
+pub fn resolve_task(app: &tauri::AppHandle, mut task: crate::models::Task) -> crate::models::Task {
+    resolve_task_images(app, &mut task);
+    task
+}
+
 /// 删除相对路径对应的原图 + 缩略图文件。
 pub fn remove_files(app: &tauri::AppHandle, rel_file: &str, rel_thumb: &str) {
     let _ = fs::remove_file(resolve(app, rel_file));

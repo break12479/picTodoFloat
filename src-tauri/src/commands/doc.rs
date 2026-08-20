@@ -7,9 +7,8 @@ use crate::services::docs;
 use crate::services::image as image_svc;
 
 /// 返回前，解析图片相对路径，避免覆盖前端已渲染的图片。
-fn resolved(app: &tauri::AppHandle, mut task: Task) -> Task {
-    image_svc::resolve_task_images(app, &mut task);
-    task
+fn resolved(app: &tauri::AppHandle, task: Task) -> Task {
+    image_svc::resolve_task(app, task)
 }
 
 /// 关联已有 .md：存绝对路径。

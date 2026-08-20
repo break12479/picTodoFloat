@@ -7,12 +7,26 @@ import type { Group, Task, TaskImage } from "../types";
 interface TaskState {
   tasks: Task[];
   groups: Group[];
+  archivedTasks: Task[];
   loading: boolean;
   error: string | null;
   selectedId: number | null; // 锚点 / 粘贴目标（最后点击）
   selectedIds: number[]; // 多选集合
 
+  // 搜索：query 为空则不生效；scope 为容器键（pinned/default/g{id}），null = 全部
+  searchOpen: boolean;
+  searchQuery: string;
+  searchScope: string | null;
+  toggleSearch: () => void;
+  closeSearch: () => void;
+  setSearchQuery: (q: string) => void;
+  setSearchScope: (scope: string | null) => void;
+
   load: () => Promise<void>;
+  loadArchived: () => Promise<void>;
+  archiveOne: (id: number) => Promise<void>;
+  unarchiveOne: (id: number) => Promise<void>;
+  archiveSelected: () => Promise<void>;
   add: (content: string, groupId?: number | null) => Promise<void>;
   update: (id: number, content: string) => Promise<void>;
   toggle: (id: number) => Promise<void>;
@@ -38,6 +52,7 @@ interface TaskState {
   addGroup: (name: string) => Promise<void>;
   renameGroup: (id: number, name: string) => Promise<void>;
   deleteGroup: (id: number) => Promise<void>;
+  reorderGroups: (orderedIds: number[]) => Promise<void>;
 
   // P5：关联文档
   linkDoc: (id: number, absPath: string) => Promise<void>;
@@ -54,10 +69,24 @@ const replaceTask = (tasks: Task[], updated: Task): Task[] =>
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   groups: [],
+  archivedTasks: [],
   loading: false,
   error: null,
   selectedId: null,
   selectedIds: [],
+
+  searchOpen: false,
+  searchQuery: "",
+  searchScope: null,
+  toggleSearch: () =>
+    set((s) =>
+      s.searchOpen
+        ? { searchOpen: false, searchQuery: "", searchScope: null }
+        : { searchOpen: true }
+    ),
+  closeSearch: () => set({ searchOpen: false, searchQuery: "", searchScope: null }),
+  setSearchQuery: (q) => set({ searchQuery: q }),
+  setSearchScope: (scope) => set({ searchScope: scope }),
 
   setError: (msg) => set({ error: msg }),
   select: (id) =>
@@ -95,15 +124,89 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const ids = get().selectedIds;
     if (ids.length === 0) return;
     const prev = get().tasks;
+    const prevArchived = get().archivedTasks;
     set({
       tasks: prev.filter((t) => !ids.includes(t.id)),
+      archivedTasks: prevArchived.filter((t) => !ids.includes(t.id)),
       selectedIds: [],
       selectedId: null,
     });
     try {
       await invoke<boolean>("delete_tasks", { ids });
     } catch (e) {
-      set({ tasks: prev, error: String(e) });
+      set({ tasks: prev, archivedTasks: prevArchived, error: String(e) });
+    }
+  },
+
+  loadArchived: async () => {
+    try {
+      const archivedTasks = await invoke<Task[]>("get_archived_tasks");
+      set({ archivedTasks });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  archiveOne: async (id) => {
+    const prevTasks = get().tasks;
+    const task = prevTasks.find((t) => t.id === id);
+    if (!task) return;
+    set({
+      tasks: prevTasks.filter((t) => t.id !== id),
+      archivedTasks: [
+        { ...task, archived: true, archived_at: new Date().toISOString() },
+        ...get().archivedTasks,
+      ],
+      selectedIds: get().selectedIds.filter((x) => x !== id),
+      selectedId: get().selectedId === id ? null : get().selectedId,
+    });
+    try {
+      await invoke<Task>("archive_task", { id, archived: true });
+    } catch (e) {
+      set({ tasks: prevTasks, error: String(e) });
+      await get().loadArchived();
+    }
+  },
+
+  unarchiveOne: async (id) => {
+    const prevArchived = get().archivedTasks;
+    const task = prevArchived.find((t) => t.id === id);
+    if (!task) return;
+    set({
+      archivedTasks: prevArchived.filter((t) => t.id !== id),
+      tasks: [...get().tasks, { ...task, archived: false, archived_at: null }],
+    });
+    try {
+      await invoke<Task>("archive_task", { id, archived: false });
+    } catch (e) {
+      set({ archivedTasks: prevArchived, error: String(e) });
+      await get().load();
+    }
+  },
+
+  archiveSelected: async () => {
+    const ids = get().selectedIds;
+    if (ids.length === 0) return;
+    const prevTasks = get().tasks;
+    const moved = prevTasks.filter((t) => ids.includes(t.id));
+    set({
+      tasks: prevTasks.filter((t) => !ids.includes(t.id)),
+      archivedTasks: [
+        ...moved.map((t) => ({
+          ...t,
+          archived: true,
+          archived_at: new Date().toISOString(),
+        })),
+        ...get().archivedTasks,
+      ],
+      selectedIds: [],
+      selectedId: null,
+    });
+    try {
+      await invoke<boolean>("archive_tasks", { ids, archived: true });
+    } catch (e) {
+      set({ tasks: prevTasks, error: String(e) });
+      await get().loadArchived();
     }
   },
 
@@ -192,15 +295,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   remove: async (id) => {
     const prev = get().tasks;
+    const prevArchived = get().archivedTasks;
     set({
       tasks: prev.filter((t) => t.id !== id),
+      archivedTasks: prevArchived.filter((t) => t.id !== id),
       selectedId: get().selectedId === id ? null : get().selectedId,
       selectedIds: get().selectedIds.filter((x) => x !== id),
     });
     try {
       await invoke<boolean>("delete_task", { id });
     } catch (e) {
-      set({ tasks: prev, error: String(e) });
+      set({ tasks: prev, archivedTasks: prevArchived, error: String(e) });
     }
   },
 
@@ -319,6 +424,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       await invoke<boolean>("delete_group", { id });
     } catch (e) {
       set({ groups: prevGroups, tasks: prevTasks, error: String(e) });
+    }
+  },
+
+  reorderGroups: async (orderedIds) => {
+    const prev = get().groups;
+    const orderMap = new Map(orderedIds.map((id, i) => [id, i]));
+    set({
+      groups: get().groups.map((g) =>
+        orderMap.has(g.id) ? { ...g, sort_order: orderMap.get(g.id)! } : g
+      ),
+    });
+    try {
+      await invoke<boolean>("reorder_groups", { orderedIds });
+    } catch (e) {
+      set({ groups: prev, error: String(e) });
     }
   },
 

@@ -10,7 +10,7 @@ pub fn auto_sort_group(conn: &Connection, group_id: Option<i64>) -> Result<(), S
     };
     let sql = format!(
         "SELECT id FROM tasks
-         WHERE pinned = 0 AND {where_group}
+         WHERE pinned = 0 AND archived = 0 AND {where_group}
          ORDER BY completed ASC,
                   CASE WHEN completed = 1 THEN completed_at END DESC,
                   sort_order ASC,

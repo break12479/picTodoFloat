@@ -21,6 +21,8 @@ pub struct Task {
     pub group_id: Option<i64>,
     pub pinned: bool,
     pub doc_path: Option<String>,
+    pub archived: bool,
+    pub archived_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -41,4 +43,7 @@ pub struct Settings {
     pub auto_start: bool,
     pub notes_folder: Option<String>,
     pub theme: String, // "dark" | "light"
+    pub hide_completed: bool,
+    pub auto_archive_days: i64, // 0 = 关闭
+    pub doc_enabled: bool,
 }

@@ -4,7 +4,8 @@ use crate::models::Settings;
 
 pub fn get(conn: &Connection) -> Result<Settings, String> {
     conn.query_row(
-        "SELECT opacity, auto_start, notes_folder, theme FROM settings WHERE id = 1",
+        "SELECT opacity, auto_start, notes_folder, theme, hide_completed, auto_archive_days, doc_enabled
+         FROM settings WHERE id = 1",
         [],
         |r| {
             Ok(Settings {
@@ -12,6 +13,9 @@ pub fn get(conn: &Connection) -> Result<Settings, String> {
                 auto_start: r.get::<_, i64>(1)? != 0,
                 notes_folder: r.get(2)?,
                 theme: r.get(3)?,
+                hide_completed: r.get::<_, i64>(4)? != 0,
+                auto_archive_days: r.get(5)?,
+                doc_enabled: r.get::<_, i64>(6)? != 0,
             })
         },
     )
@@ -19,12 +23,16 @@ pub fn get(conn: &Connection) -> Result<Settings, String> {
 }
 
 /// 局部更新（None = 不改）。notes_folder 传入空串视为清空（回默认目录）。
+#[allow(clippy::too_many_arguments)]
 pub fn update(
     conn: &Connection,
     opacity: Option<i64>,
     auto_start: Option<bool>,
     notes_folder: Option<String>,
     theme: Option<String>,
+    hide_completed: Option<bool>,
+    auto_archive_days: Option<i64>,
+    doc_enabled: Option<bool>,
 ) -> Result<Settings, String> {
     if let Some(t) = theme {
         conn.execute(
@@ -52,6 +60,27 @@ pub fn update(
         conn.execute(
             "UPDATE settings SET notes_folder = ?1 WHERE id = 1",
             params![value],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(hc) = hide_completed {
+        conn.execute(
+            "UPDATE settings SET hide_completed = ?1 WHERE id = 1",
+            params![hc as i64],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(days) = auto_archive_days {
+        conn.execute(
+            "UPDATE settings SET auto_archive_days = ?1 WHERE id = 1",
+            params![days.max(0)],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(de) = doc_enabled {
+        conn.execute(
+            "UPDATE settings SET doc_enabled = ?1 WHERE id = 1",
+            params![de as i64],
         )
         .map_err(|e| e.to_string())?;
     }
