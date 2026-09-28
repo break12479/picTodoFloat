@@ -183,15 +183,8 @@ body {
 
 .task-text {
   flex: 1 1 auto;
+  min-width: 0;
   cursor: default;
-  word-break: break-word;
-  white-space: pre-wrap;
-  line-height: 1.4;
-  max-height: 80px;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
 }
 
 .task-more {
@@ -214,10 +207,131 @@ body {
 }
 
 .text-modal-content {
-  white-space: pre-wrap;
-  word-break: break-word;
   max-height: 60vh;
   overflow-y: auto;
+}
+
+/* Markdown 渲染内容（任务条目预览 / 展开弹层 / 便签模式共用样式基调） */
+.md-content {
+  line-height: 1.5;
+  word-break: break-word;
+  font-size: 14px;
+}
+
+.md-content > *:first-child {
+  margin-top: 0;
+}
+
+.md-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-content p {
+  margin: 4px 0;
+}
+
+.md-content ul,
+.md-content ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.md-content li {
+  margin: 2px 0;
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  margin: 6px 0 4px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.md-content h1 {
+  font-size: 1.25em;
+}
+
+.md-content h2 {
+  font-size: 1.15em;
+}
+
+.md-content h3 {
+  font-size: 1.08em;
+}
+
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  font-size: 1em;
+}
+
+.md-content code {
+  background: var(--input-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.92em;
+  font-family: "Cascadia Code", "Consolas", monospace;
+}
+
+.md-content pre {
+  background: var(--input-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.md-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.md-content blockquote {
+  margin: 4px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border);
+  color: var(--text-dim);
+}
+
+.md-content a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.md-content strong {
+  font-weight: 700;
+}
+
+.md-content em {
+  font-style: italic;
+}
+
+.md-content del {
+  opacity: 0.7;
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  margin: 8px 0;
+}
+
+.md-content img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+/* 条目预览：截断字符数之外，兜底一个最大高度避免极端内容撑爆列表 */
+.md-content-compact {
+  max-height: 110px;
+  overflow: hidden;
 }
 
 .task-item.done .task-text {
@@ -1230,6 +1344,13 @@ html.previewing #root {
 .note-hint {
   font-size: 11px;
   color: var(--text-faint);
+}
+
+.note-head-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .note-textarea {

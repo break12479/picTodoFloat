@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
 } from "@dnd-kit/core";
 
+import { renderMarkdown, truncateMarkdownSource } from "../lib/markdown";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import DocButton from "./DocButton";
 import ImageThumbnailRow from "./ImageThumbnailRow";
+
+// 折叠预览的字符数上限（超过则截断 + 提供"展开全文"）
+const PREVIEW_CHAR_LIMIT = 180;
 
 interface Props {
   task: Task;
@@ -48,10 +52,18 @@ export default function TaskItem({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.content);
   const [dragOver, setDragOver] = useState(false);
-  const [overflowing, setOverflowing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
+  // 手动判定双击：不依赖浏览器原生 dblclick 事件（WebView2 下已经踩过一次原生事件
+  // 行为跟标准浏览器不一致的坑，这里干脆自己按点击间隔判定，更可靠）。
+  const lastTextClickRef = useRef(0);
+
+  const hasMore = task.content.length > PREVIEW_CHAR_LIMIT;
+  const previewHtml = useMemo(() => {
+    const { text } = truncateMarkdownSource(task.content, PREVIEW_CHAR_LIMIT);
+    return renderMarkdown(text);
+  }, [task.content]);
+  const fullHtml = useMemo(() => renderMarkdown(task.content), [task.content]);
 
   const autoGrow = () => {
     const el = inputRef.current;
@@ -67,20 +79,6 @@ export default function TaskItem({
       autoGrow();
     }
   }, [editing]);
-
-  // 文本超过限高（约 4 行）时可展开弹层查看全文
-  useEffect(() => {
-    const el = textRef.current;
-    if (!el) {
-      setOverflowing(false);
-      return;
-    }
-    const check = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [task.content, editing]);
 
   const commit = () => {
     setEditing(false);
@@ -166,17 +164,30 @@ export default function TaskItem({
             }}
           />
         ) : (
-          <span
-            ref={textRef}
+          <div
             className="task-text"
-            onDoubleClick={() => {
-              setDraft(task.content);
-              setEditing(true);
+            onClick={(e) => {
+              const now = Date.now();
+              if (now - lastTextClickRef.current < 400) {
+                e.stopPropagation();
+                lastTextClickRef.current = 0;
+                setDraft(task.content);
+                setEditing(true);
+              } else {
+                lastTextClickRef.current = now;
+              }
             }}
             title="双击编辑"
           >
-            {task.content || <span className="placeholder">（空任务）</span>}
-          </span>
+            {task.content ? (
+              <div
+                className="md-content md-content-compact"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            ) : (
+              <span className="placeholder">（空任务）</span>
+            )}
+          </div>
         )}
 
         {docEnabled && (
@@ -237,7 +248,7 @@ export default function TaskItem({
         </div>
       </div>
 
-      {overflowing && !editing && (
+      {hasMore && !editing && (
         <div className="task-more">
           <button
             className="text-expand-btn"
@@ -265,7 +276,10 @@ export default function TaskItem({
           }}
         >
           <div className="dialog text-modal" onClick={(e) => e.stopPropagation()}>
-            <p className="dialog-msg text-modal-content">{task.content}</p>
+            <div
+              className="md-content text-modal-content"
+              dangerouslySetInnerHTML={{ __html: fullHtml }}
+            />
             <div className="dialog-actions">
               <button
                 className="btn ghost"

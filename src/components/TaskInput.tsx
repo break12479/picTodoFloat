@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useTaskStore } from "../stores/taskStore";
 
@@ -10,6 +10,11 @@ export default function TaskInput() {
   const [groupId, setGroupId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (expanded) noteRef.current?.focus();
+  }, [expanded]);
 
   const autoGrow = () => {
     const el = taRef.current;
@@ -37,32 +42,57 @@ export default function TaskInput() {
       e.preventDefault();
       submit();
     }
-    if (e.key === "Escape" && expanded) {
-      collapse();
-    }
   };
 
-  return (
-    <div className="task-input">
-      {expanded && (
+  if (expanded) {
+    // 便签展开时，覆盖层下面那一整排（分组选择/紧凑输入框/展开/添加按钮）完全不挂载，
+    // 而不只是视觉盖住。
+    //
+    // 这里原本是 CodeMirror 实现的 Obsidian 式实时预览编辑器，但搜狗输入法快速连续用
+    // 空格确认候选词时会丢字（数字键确认、或放慢速度都不会丢），排查过装饰重建时机、
+    // 回声抑制、去掉自定义装饰插件、拦截空格 keydown 等 5 个方向均未解决，判断是
+    // WebView2 + 搜狗 + CodeMirror 交互更底层的问题，够不到应用代码层面。改回普通
+    // textarea（放弃实时预览），彻底避开这个坑。
+    return (
+      <div className="task-input">
         <div className="note-overlay">
           <div className="note-head">
-            <span className="note-hint">便签模式 · Enter 保存为任务 · Esc 收起</span>
-            <button className="win-btn" onClick={collapse} title="收起">
-              ×
-            </button>
+            <span className="note-hint">
+              便签模式 · Enter 换行 · Ctrl+Enter 保存为任务 · Esc 收起
+            </span>
+            <div className="note-head-actions">
+              <button className="btn ghost" onClick={submit} title="保存为任务">
+                ✓ 保存
+              </button>
+              <button className="win-btn" onClick={collapse} title="收起">
+                ×
+              </button>
+            </div>
           </div>
           <textarea
+            ref={noteRef}
             className="note-textarea"
-            autoFocus
             value={value}
             placeholder="随手记点什么…"
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                collapse();
+              }
+              // 普通 Enter / Shift+Enter：不拦截，走 textarea 默认换行
+            }}
           />
         </div>
-      )}
+      </div>
+    );
+  }
 
+  return (
+    <div className="task-input">
       <select
         className="task-move input-group-pick"
         value={groupId ?? ""}
