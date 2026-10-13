@@ -10,6 +10,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
+import ConfirmDialog from "./ConfirmDialog";
+import Icon from "./Icon";
 import SortableTaskItem from "./SortableTaskItem";
 
 interface Props {
@@ -41,6 +43,7 @@ export default function GroupSection({
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(title);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { setNodeRef } = useDroppable({
     id: `container:${containerKey}`,
@@ -48,7 +51,6 @@ export default function GroupSection({
 
   // 分组本身的拖拽排序：仅用户分组参与（置顶/默认组固定位置，不可拖）
   const {
-    attributes: groupAttrs,
     listeners: groupListeners,
     setNodeRef: setGroupNodeRef,
     transform: groupTransform,
@@ -80,26 +82,18 @@ export default function GroupSection({
         groupDragging ? "group-dragging" : ""
       }`}
     >
-      <header className="group-header">
-        {isUserGroup ? (
-          <span
-            className="group-drag-handle"
-            title="拖拽调整分组顺序"
-            {...groupAttrs}
-            {...groupListeners}
-          >
-            ⠿
-          </span>
-        ) : (
-          <span className="group-drag-handle placeholder-handle" />
-        )}
-
+      {/* 用户分组：按住标题栏拖动即可调整分组顺序（无独立手柄）；重命名时不挂，免得拖选文字变成拖分组 */}
+      <header
+        className={`group-header ${isUserGroup && !renaming ? "draggable" : ""}`}
+        title={isUserGroup && !renaming ? "按住拖动调整分组顺序" : undefined}
+        {...(isUserGroup && !renaming ? groupListeners : undefined)}
+      >
         <button
-          className="group-collapse"
+          className={`group-collapse ${collapsed ? "" : "open"}`}
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? "展开" : "折叠"}
         >
-          {collapsed ? "▶" : "▼"}
+          <Icon name="chevron" size={13} />
         </button>
 
         {renaming ? (
@@ -128,33 +122,52 @@ export default function GroupSection({
             onDoubleClick={() => isUserGroup && setRenaming(true)}
             title={isUserGroup ? "双击重命名" : undefined}
           >
+            {containerKey === "pinned" && <Icon name="pin" size={12} />}
             {title}
           </span>
         )}
 
         <span className="group-count">{items.length}</span>
 
-        <div className="group-actions">
+        <div
+          className="group-actions"
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
           {containerKey !== "pinned" && items.length > 0 && (
             <button
-              className="group-btn"
+              className="icon-btn group-btn"
               title="本组自动排序（已完成沉底）"
               onClick={() => autoSort(groupId)}
             >
-              ↕
+              <Icon name="sort" size={13} />
             </button>
           )}
           {isUserGroup && groupId != null && (
             <button
-              className="group-btn danger"
+              className="icon-btn group-btn danger"
               title="删除分组（组内任务归默认组）"
-              onClick={() => deleteGroup(groupId)}
+              onClick={() =>
+                items.length > 0 ? setConfirmDelete(true) : deleteGroup(groupId)
+              }
             >
-              🗑
+              <Icon name="trash" size={13} />
             </button>
           )}
         </div>
       </header>
+
+      {confirmDelete && groupId != null && (
+        <ConfirmDialog
+          message={`删除分组「${title}」？组内 ${items.length} 项任务会移到默认组，不会被删除。`}
+          confirmText="删除分组"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            deleteGroup(groupId);
+          }}
+        />
+      )}
 
       {!collapsed && (
         <div ref={setNodeRef} className="group-body">
@@ -173,8 +186,10 @@ export default function GroupSection({
                 onClick={() => setHideCompleted(!hideCompleted)}
                 title={hideCompleted ? "展开已完成" : "折叠已完成"}
               >
-                <span className="done-toggle-caret">{hideCompleted ? "▸" : "▾"}</span>
-                已完成 ({doneItems.length})
+                <span className={`done-toggle-caret ${hideCompleted ? "" : "open"}`}>
+                  <Icon name="chevron" size={11} />
+                </span>
+                已完成 {doneItems.length}
               </button>
             )}
 

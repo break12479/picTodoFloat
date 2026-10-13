@@ -9,10 +9,9 @@ interface Props {
   onRequestDelete: (task: Task) => void;
 }
 
-/** 把 TaskItem 包成可排序项：提供拖拽手柄与 transform。 */
+/** 把 TaskItem 包成可排序项：整行即拖拽区（无独立手柄），并提供 transform。 */
 export default function SortableTaskItem({ task, onRequestDelete }: Props) {
   const {
-    attributes,
     listeners,
     setNodeRef,
     transform,
@@ -31,7 +30,7 @@ export default function SortableTaskItem({ task, onRequestDelete }: Props) {
         opacity: isDragging ? 0.5 : 1,
       }}
       dragging={isDragging}
-      handle={{ attributes, listeners }}
+      dragListeners={listeners}
     />
   );
 }

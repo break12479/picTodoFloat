@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  DraggableAttributes,
-  DraggableSyntheticListeners,
-} from "@dnd-kit/core";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { DraggableSyntheticListeners } from "@dnd-kit/core";
 
 import { renderMarkdown, truncateMarkdownSource } from "../lib/markdown";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import DocButton from "./DocButton";
+import Icon from "./Icon";
 import ImageThumbnailRow from "./ImageThumbnailRow";
+import TaskMenu from "./TaskMenu";
 
 // 折叠预览的字符数上限（超过则截断 + 提供"展开全文"）
 const PREVIEW_CHAR_LIMIT = 180;
@@ -17,35 +16,28 @@ const PREVIEW_CHAR_LIMIT = 180;
 interface Props {
   task: Task;
   onRequestDelete: (task: Task) => void;
-  // dnd-kit（未完成任务可拖拽时由 SortableTaskItem 传入）
+  // dnd-kit（由 SortableTaskItem 传入；拖拽浮层里的副本没有）
   rootRef?: (el: HTMLElement | null) => void;
   rootStyle?: React.CSSProperties;
   dragging?: boolean;
-  handle?: {
-    attributes: DraggableAttributes;
-    listeners: DraggableSyntheticListeners;
-  };
+  dragListeners?: DraggableSyntheticListeners;
 }
 
-/** 单条任务：拖拽手柄 / 勾选 / 文本（双击编辑）/ 缩略图行 / 置顶 / 移动分组 / 删除。 */
+/** 单条任务：勾选 / 文本（双击编辑）/ 缩略图行 / ⋯ 菜单（置顶 / 归档 / 移动分组 / 删除，也可右键打开）。整行按住拖动即可排序。 */
 export default function TaskItem({
   task,
   onRequestDelete,
   rootRef,
   rootStyle,
   dragging,
-  handle,
+  dragListeners,
 }: Props) {
   const toggle = useTaskStore((s) => s.toggle);
   const update = useTaskStore((s) => s.update);
   const select = useTaskStore((s) => s.select);
   const addImage = useTaskStore((s) => s.addImage);
   const deleteImage = useTaskStore((s) => s.deleteImage);
-  const pin = useTaskStore((s) => s.pin);
-  const archiveOne = useTaskStore((s) => s.archiveOne);
-  const moveToGroup = useTaskStore((s) => s.moveToGroup);
   const clickSelect = useTaskStore((s) => s.clickSelect);
-  const groups = useTaskStore((s) => s.groups);
   const selected = useTaskStore((s) => s.selectedIds.includes(task.id));
   const docEnabled = useSettingsStore((s) => s.settings?.doc_enabled ?? true);
 
@@ -53,17 +45,39 @@ export default function TaskItem({
   const [draft, setDraft] = useState(task.content);
   const [dragOver, setDragOver] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [menuAt, setMenuAt] = useState<{
+    x: number;
+    y: number;
+    align: "start" | "end";
+  } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 手动判定双击：不依赖浏览器原生 dblclick 事件（WebView2 下已经踩过一次原生事件
   // 行为跟标准浏览器不一致的坑，这里干脆自己按点击间隔判定，更可靠）。
   const lastTextClickRef = useRef(0);
 
-  const hasMore = task.content.length > PREVIEW_CHAR_LIMIT;
   const previewHtml = useMemo(() => {
     const { text } = truncateMarkdownSource(task.content, PREVIEW_CHAR_LIMIT);
     return renderMarkdown(text);
   }, [task.content]);
   const fullHtml = useMemo(() => renderMarkdown(task.content), [task.content]);
+
+  // 预览被裁切：字符数超限，或没超字符数但被 .md-content-compact 的最大高度截掉
+  // （中文一行字少，180 字远超 5 行，只按字符数判断会出现"被截断却没有展开按钮"）
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el) {
+      setClipped(false);
+      return;
+    }
+    const check = () => setClipped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check); // 窗口变窄时换行变多
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [previewHtml, editing]);
+  const hasMore = task.content.length > PREVIEW_CHAR_LIMIT || clipped;
 
   const autoGrow = () => {
     const el = inputRef.current;
@@ -101,16 +115,32 @@ export default function TaskItem({
     }
   };
 
+  // 整行即拖拽区：PointerSensor 要移动 5px 才激活，单击/双击/右键不受影响。
+  // 编辑中、展开全文弹层打开时不挂，否则在输入框/弹层里拖选文字会变成拖动任务。
+  const rowDragListeners = editing || expanded ? undefined : dragListeners;
+
   return (
     <div
       ref={rootRef}
       style={rootStyle}
+      {...rowDragListeners}
       className={`task-item ${task.completed ? "done" : ""} ${
         selected ? "selected" : ""
-      } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""}`}
+      } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""} ${
+        menuAt ? "menu-open" : ""
+      }`}
+      onMouseDown={(e) => {
+        // Shift+点击做范围多选时，阻止浏览器顺带拖出一片文字选区
+        if (e.shiftKey && !editing) e.preventDefault();
+      }}
       onClick={(e) =>
         clickSelect(task.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
       }
+      onContextMenu={(e) => {
+        if (editing || !rootRef) return; // 拖拽浮层里的副本不响应
+        e.preventDefault();
+        setMenuAt({ x: e.clientX + 2, y: e.clientY - 4, align: "start" });
+      }}
       onDrop={onDrop}
       onDragOver={(e) => {
         e.preventDefault();
@@ -119,20 +149,6 @@ export default function TaskItem({
       onDragLeave={() => setDragOver(false)}
     >
       <div className="task-main">
-        {handle ? (
-          <span
-            className="drag-handle"
-            title="拖拽排序"
-            {...handle.attributes}
-            {...handle.listeners}
-            onClick={(e) => e.stopPropagation()}
-          >
-            ⠿
-          </span>
-        ) : (
-          <span className="drag-handle placeholder-handle" />
-        )}
-
         <input
           type="checkbox"
           checked={task.completed}
@@ -181,7 +197,10 @@ export default function TaskItem({
           >
             {task.content ? (
               <div
-                className="md-content md-content-compact"
+                ref={previewRef}
+                className={`md-content md-content-compact ${
+                  hasMore ? "is-truncated" : ""
+                }`}
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             ) : (
@@ -191,60 +210,41 @@ export default function TaskItem({
         )}
 
         {docEnabled && (
-          <div className="task-doc" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="task-doc"
+            onClick={(e) => e.stopPropagation()}
+            // 按住 📄 是长按取消关联，不是拖动（鼠标走 pointerdown，触摸走 touchstart）
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
             <DocButton task={task} />
           </div>
         )}
 
-        <div className="task-actions" onClick={(e) => e.stopPropagation()}>
-          <span className="actions-trigger" title="更多操作">
-            {task.pinned ? "📌" : "⋯"}
-          </span>
-
-          <div className="actions-menu">
-            <button
-              className={`task-pin ${task.pinned ? "active" : ""}`}
-              onClick={() => pin(task.id, !task.pinned)}
-              title={task.pinned ? "取消置顶" : "置顶"}
-            >
-              {task.pinned ? "📌" : "📍"}
-            </button>
-
-            <select
-              className="task-move"
-              value={task.group_id ?? ""}
-              title="移动到分组"
-              onChange={(e) =>
-                moveToGroup(
-                  task.id,
-                  e.target.value ? Number(e.target.value) : null
-                )
-              }
-            >
-              <option value="">默认组</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              className="task-archive"
-              onClick={() => archiveOne(task.id)}
-              title="归档"
-            >
-              🗄
-            </button>
-
-            <button
-              className="task-del"
-              onClick={() => onRequestDelete(task)}
-              title="删除任务"
-            >
-              ×
-            </button>
-          </div>
+        <div
+          className="task-actions"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <button
+            className="icon-btn task-menu-btn"
+            title="更多操作（也可右键）"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
+            }}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          {menuAt && (
+            <TaskMenu
+              task={task}
+              at={menuAt}
+              onClose={() => setMenuAt(null)}
+              onRequestDelete={onRequestDelete}
+            />
+          )}
         </div>
       </div>
 
