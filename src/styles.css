@@ -1,8 +1,9 @@
 :root {
-  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui,
-    sans-serif;
+  /* 西文走 Segoe UI，中文走微软雅黑 UI（两者同源设计，基线一致）。
+     不用 system-ui：简中 Windows 上它解析为雅黑，西文会变粗变大。 */
+  font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", sans-serif;
   font-size: 14px;
-  -webkit-font-smoothing: antialiased;
 
   /* ---- 主题变量（深色默认）---- */
   color-scheme: dark; /* 让原生控件（下拉弹层、滚动条、滑块）跟随主题 */
@@ -458,7 +459,7 @@ kbd {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
-  margin: 2.5px 0 0; /* 21px 行高下与首行文字居中 */
+  margin: 3.6px 0 0; /* 23.2px 行高（14.5 × 1.6）下与首行文字居中 */
   border: 1.5px solid var(--check-border);
   border-radius: 50%;
   background: transparent center / 10px 10px no-repeat;
@@ -525,8 +526,8 @@ kbd {
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
   border-radius: 6px;
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.6;
   outline: none;
   resize: none;
   overflow-y: auto;
@@ -598,11 +599,15 @@ kbd {
   text-align: center;
 }
 
-/* Markdown 渲染内容（任务条目预览 / 展开弹层共用） */
+/* Markdown 渲染内容（任务条目预览 / 展开弹层共用）
+   透明窗口里 Chromium 不做 ClearType，只有灰度抗锯齿，雅黑在 14px 显得细、发虚：
+   字号略放大、行距放松一点；中西文之间自动加间隙，连续全角标点挤压。 */
 .md-content {
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.6;
   word-break: break-word;
-  font-size: 14px;
+  text-autospace: normal;
+  text-spacing-trim: normal;
 }
 
 .md-content > *:first-child {
