@@ -88,11 +88,14 @@ pub fn run() {
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
                 let ctrl_h = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyH);
-                app.global_shortcut().on_shortcut(ctrl_h, |app, _sc, event| {
+                // 热键可能已被其他程序（或另一个本应用实例）占用：注册失败不应让整个应用启动崩溃
+                if let Err(e) = app.global_shortcut().on_shortcut(ctrl_h, |app, _sc, event| {
                     if event.state() == ShortcutState::Pressed {
                         toggle_main_window(app);
                     }
-                })?;
+                }) {
+                    eprintln!("全局快捷键 Ctrl+H 注册失败（可能已被占用），已跳过：{e}");
+                }
             }
 
             Ok(())
