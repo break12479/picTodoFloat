@@ -51,7 +51,6 @@ export default function GroupSection({
 
   // 分组本身的拖拽排序：仅用户分组参与（置顶/默认组固定位置，不可拖）
   const {
-    attributes: groupAttrs,
     listeners: groupListeners,
     setNodeRef: setGroupNodeRef,
     transform: groupTransform,
@@ -83,20 +82,12 @@ export default function GroupSection({
         groupDragging ? "group-dragging" : ""
       }`}
     >
-      <header className="group-header">
-        {isUserGroup ? (
-          <span
-            className="group-drag-handle"
-            title="拖拽调整分组顺序"
-            {...groupAttrs}
-            {...groupListeners}
-          >
-            <Icon name="grip" size={13} />
-          </span>
-        ) : (
-          <span className="group-drag-handle placeholder-handle" />
-        )}
-
+      {/* 用户分组：按住标题栏拖动即可调整分组顺序（无独立手柄）；重命名时不挂，免得拖选文字变成拖分组 */}
+      <header
+        className={`group-header ${isUserGroup ? "draggable" : ""}`}
+        title={isUserGroup && !renaming ? "按住拖动调整分组顺序" : undefined}
+        {...(isUserGroup && !renaming ? groupListeners : undefined)}
+      >
         <button
           className={`group-collapse ${collapsed ? "" : "open"}`}
           onClick={() => setCollapsed((c) => !c)}
@@ -138,7 +129,7 @@ export default function GroupSection({
 
         <span className="group-count">{items.length}</span>
 
-        <div className="group-actions">
+        <div className="group-actions" onPointerDown={(e) => e.stopPropagation()}>
           {containerKey !== "pinned" && items.length > 0 && (
             <button
               className="icon-btn group-btn"

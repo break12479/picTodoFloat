@@ -27,16 +27,6 @@ const PATHS = {
       <circle cx="19" cy="12" r="1" />
     </>
   ),
-  grip: (
-    <>
-      <circle cx="9" cy="6" r="1" />
-      <circle cx="9" cy="12" r="1" />
-      <circle cx="9" cy="18" r="1" />
-      <circle cx="15" cy="6" r="1" />
-      <circle cx="15" cy="12" r="1" />
-      <circle cx="15" cy="18" r="1" />
-    </>
-  ),
   chevron: <path d="m9 18 6-6-6-6" />,
   archive: (
     <>

@@ -1,8 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type {
-  DraggableAttributes,
-  DraggableSyntheticListeners,
-} from "@dnd-kit/core";
+import type { DraggableSyntheticListeners } from "@dnd-kit/core";
 
 import { renderMarkdown, truncateMarkdownSource } from "../lib/markdown";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -19,24 +16,21 @@ const PREVIEW_CHAR_LIMIT = 180;
 interface Props {
   task: Task;
   onRequestDelete: (task: Task) => void;
-  // dnd-kit（未完成任务可拖拽时由 SortableTaskItem 传入）
+  // dnd-kit（由 SortableTaskItem 传入；拖拽浮层里的副本没有）
   rootRef?: (el: HTMLElement | null) => void;
   rootStyle?: React.CSSProperties;
   dragging?: boolean;
-  handle?: {
-    attributes: DraggableAttributes;
-    listeners: DraggableSyntheticListeners;
-  };
+  dragListeners?: DraggableSyntheticListeners;
 }
 
-/** 单条任务：拖拽手柄 / 勾选 / 文本（双击编辑）/ 缩略图行 / ⋯ 菜单（置顶 / 归档 / 移动分组 / 删除，也可右键打开）。 */
+/** 单条任务：勾选 / 文本（双击编辑）/ 缩略图行 / ⋯ 菜单（置顶 / 归档 / 移动分组 / 删除，也可右键打开）。整行按住拖动即可排序。 */
 export default function TaskItem({
   task,
   onRequestDelete,
   rootRef,
   rootStyle,
   dragging,
-  handle,
+  dragListeners,
 }: Props) {
   const toggle = useTaskStore((s) => s.toggle);
   const update = useTaskStore((s) => s.update);
@@ -121,10 +115,15 @@ export default function TaskItem({
     }
   };
 
+  // 整行即拖拽区：PointerSensor 要移动 5px 才激活，单击/双击/右键不受影响。
+  // 编辑中、展开全文弹层打开时不挂，否则在输入框/弹层里拖选文字会变成拖动任务。
+  const rowDragListeners = editing || expanded ? undefined : dragListeners;
+
   return (
     <div
       ref={rootRef}
       style={rootStyle}
+      {...rowDragListeners}
       className={`task-item ${task.completed ? "done" : ""} ${
         selected ? "selected" : ""
       } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""} ${
@@ -150,20 +149,6 @@ export default function TaskItem({
       onDragLeave={() => setDragOver(false)}
     >
       <div className="task-main">
-        {handle ? (
-          <span
-            className="drag-handle"
-            title="拖拽排序"
-            {...handle.attributes}
-            {...handle.listeners}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Icon name="grip" size={14} />
-          </span>
-        ) : (
-          <span className="drag-handle placeholder-handle" />
-        )}
-
         <input
           type="checkbox"
           checked={task.completed}
@@ -225,12 +210,20 @@ export default function TaskItem({
         )}
 
         {docEnabled && (
-          <div className="task-doc" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="task-doc"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()} // 按住 📄 是长按取消关联，不是拖动
+          >
             <DocButton task={task} />
           </div>
         )}
 
-        <div className="task-actions" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="task-actions"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             className="icon-btn task-menu-btn"
             title="更多操作（也可右键）"

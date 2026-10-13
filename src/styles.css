@@ -414,15 +414,16 @@ kbd {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2px 6px 12px;
+  padding: 2px 4px 12px;
 }
 
+/* 整行即拖拽区，无独立手柄 → 左侧不再预留手柄栏 */
 .task-item {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 6px 6px 6px 22px;
+  padding: 6px 6px 6px 8px;
   border-radius: 8px;
   border: 1px solid transparent;
   transition: background 0.12s, border-color 0.12s;
@@ -529,35 +530,6 @@ kbd {
   outline: none;
   resize: none;
   overflow-y: auto;
-}
-
-/* 拖拽手柄：放在左侧留白里，不占文字列宽度 */
-.drag-handle {
-  position: absolute;
-  left: 3px;
-  top: 8px;
-  width: 16px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  color: var(--text-faint);
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 0.12s;
-  user-select: none;
-  touch-action: none;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
-}
-
-.placeholder-handle {
-  cursor: default;
-}
-
-.task-item:hover .drag-handle {
-  opacity: 1;
 }
 
 /* 行尾：📄 + ⋯。平时隐藏（占位不变，避免悬停时文字重排），悬停/选中/菜单打开时显示 */
@@ -786,40 +758,27 @@ kbd {
   z-index: 10;
 }
 
+/* 左内边距 9 = 任务行边框 1 + 内边距 8：折叠箭头与勾选框同列，组名与任务文字同列 */
 .group-header {
   position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 6px 0 22px;
+  padding: 0 6px 0 9px;
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 600;
 }
 
-.group-drag-handle {
-  position: absolute;
-  left: 3px;
-  top: 4px;
-  width: 16px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  color: var(--text-faint);
+/* 用户分组：按住标题栏拖动排序 */
+.group-header.draggable {
   cursor: grab;
-  opacity: 0;
-  transition: opacity 0.12s;
-  user-select: none;
   touch-action: none;
 }
 
-.group-drag-handle:active {
+.group-header.draggable:active {
   cursor: grabbing;
-}
-
-.group-header:hover .group-drag-handle {
-  opacity: 1;
 }
 
 .group-collapse {
@@ -905,7 +864,7 @@ kbd {
 .group-empty {
   color: var(--text-faint);
   font-size: 12px;
-  padding: 6px 10px 6px 48px;
+  padding: 6px 10px 6px 35px;
 }
 
 /* 已完成折叠行 */
@@ -915,7 +874,7 @@ kbd {
   gap: 6px;
   width: 100%;
   margin: 1px 0;
-  padding: 4px 6px 4px 22px;
+  padding: 4px 6px 4px 9px;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -943,7 +902,7 @@ kbd {
   gap: 6px;
   width: 100%;
   margin-top: 2px;
-  padding: 6px 6px 6px 22px;
+  padding: 6px 6px 6px 10px;
   border: none;
   border-radius: 8px;
   background: transparent;

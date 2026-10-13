@@ -59,11 +59,12 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
 
   const currentGroup = task.group_id ?? null;
 
-  // portal 后 React 合成事件仍会沿组件树冒泡到任务行（触发选中），这里统一截住
+  // portal 后 React 合成事件仍会沿组件树冒泡到任务行（触发选中 / 拖动），这里统一截住
   return createPortal(
     <div
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
     >
       <div
         className="popover-backdrop"
