@@ -3,6 +3,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -21,6 +22,17 @@ import Icon from "./Icon";
 import TaskItem from "./TaskItem";
 
 const noop = () => {};
+
+// 整行即拖拽区，所以按输入方式分流：鼠标 / 笔走 PointerSensor（移动 5px 激活）；
+// 触摸交给 TouchSensor（长按激活）——否则手指一划就是拖动，列表没法滑动；
+// 反过来只用 PointerSensor 的话，浏览器会把触摸滑动当成滚动并 pointercancel，任务拖不动。
+class MousePenSensor extends PointerSensor {
+  static activators = PointerSensor.activators.map((a) => ({
+    ...a,
+    handler: (...args: Parameters<typeof a.handler>) =>
+      args[0].nativeEvent.pointerType !== "touch" && a.handler(...args),
+  }));
+}
 
 export default function TaskList() {
   const tasks = useTaskStore((s) => s.tasks);
@@ -53,7 +65,8 @@ export default function TaskList() {
     Number(String(id).slice("group-".length));
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(MousePenSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
   const activelySearching = searchOpen && searchQuery.trim().length > 0;

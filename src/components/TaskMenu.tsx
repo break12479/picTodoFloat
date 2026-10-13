@@ -65,6 +65,7 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       <div
         className="popover-backdrop"

@@ -213,7 +213,9 @@ export default function TaskItem({
           <div
             className="task-doc"
             onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()} // 按住 📄 是长按取消关联，不是拖动
+            // 按住 📄 是长按取消关联，不是拖动（鼠标走 pointerdown，触摸走 touchstart）
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
           >
             <DocButton task={task} />
           </div>
@@ -223,6 +225,7 @@ export default function TaskItem({
           className="task-actions"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
           <button
             className="icon-btn task-menu-btn"

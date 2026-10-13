@@ -406,7 +406,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 2px 8px 6px;
+  padding: 2px 5px 6px; /* 与列表行左右边缘对齐：.list-scroll 4 + 分组边框 1 */
 }
 
 .list-scroll {
@@ -771,10 +771,9 @@ kbd {
   font-weight: 600;
 }
 
-/* 用户分组：按住标题栏拖动排序 */
+/* 用户分组：按住标题栏拖动排序（触摸为长按，划动仍滚动列表） */
 .group-header.draggable {
   cursor: grab;
-  touch-action: none;
 }
 
 .group-header.draggable:active {
@@ -871,7 +870,7 @@ kbd {
 .done-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px; /* 同任务行：箭头列 16 + 10 → 文字与任务文字同列 */
   width: 100%;
   margin: 1px 0;
   padding: 4px 6px 4px 9px;
@@ -899,7 +898,7 @@ kbd {
 .add-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   width: 100%;
   margin-top: 2px;
   padding: 6px 6px 6px 10px;
@@ -911,6 +910,11 @@ kbd {
   text-align: left;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
+}
+
+/* 13px 的 + 图标补齐到 16px 列宽，与勾选框同心 */
+.add-group .icon {
+  margin: 0 1.5px;
 }
 
 .add-group:hover {
@@ -1148,7 +1152,7 @@ kbd {
 /* ---- 底部输入 ---- */
 .footer {
   flex: 0 0 auto;
-  padding: 8px;
+  padding: 8px 5px; /* 左右同 .list-head，输入框与列表行同宽 */
 }
 
 .task-input {

@@ -84,7 +84,7 @@ export default function GroupSection({
     >
       {/* 用户分组：按住标题栏拖动即可调整分组顺序（无独立手柄）；重命名时不挂，免得拖选文字变成拖分组 */}
       <header
-        className={`group-header ${isUserGroup ? "draggable" : ""}`}
+        className={`group-header ${isUserGroup && !renaming ? "draggable" : ""}`}
         title={isUserGroup && !renaming ? "按住拖动调整分组顺序" : undefined}
         {...(isUserGroup && !renaming ? groupListeners : undefined)}
       >
@@ -129,7 +129,11 @@ export default function GroupSection({
 
         <span className="group-count">{items.length}</span>
 
-        <div className="group-actions" onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          className="group-actions"
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
           {containerKey !== "pinned" && items.length > 0 && (
             <button
               className="icon-btn group-btn"
