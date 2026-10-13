@@ -1,6 +1,7 @@
 import { openPinWindow } from "../lib/pin";
 import { convertFileSrc } from "../lib/tauri";
 import type { TaskImage } from "../types";
+import Icon from "./Icon";
 
 interface Props {
   images: TaskImage[];
@@ -41,7 +42,7 @@ export default function ImageThumbnailRow({ images, onDelete }: Props) {
                 onDelete(img.id);
               }}
             >
-              ×
+              <Icon name="x" size={10} />
             </span>
           </div>
         );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
@@ -9,7 +9,9 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import DocButton from "./DocButton";
+import Icon from "./Icon";
 import ImageThumbnailRow from "./ImageThumbnailRow";
+import TaskMenu from "./TaskMenu";
 
 // 折叠预览的字符数上限（超过则截断 + 提供"展开全文"）
 const PREVIEW_CHAR_LIMIT = 180;
@@ -27,7 +29,7 @@ interface Props {
   };
 }
 
-/** 单条任务：拖拽手柄 / 勾选 / 文本（双击编辑）/ 缩略图行 / 置顶 / 移动分组 / 删除。 */
+/** 单条任务：拖拽手柄 / 勾选 / 文本（双击编辑）/ 缩略图行 / ⋯ 菜单（置顶 / 归档 / 移动分组 / 删除，也可右键打开）。 */
 export default function TaskItem({
   task,
   onRequestDelete,
@@ -41,11 +43,7 @@ export default function TaskItem({
   const select = useTaskStore((s) => s.select);
   const addImage = useTaskStore((s) => s.addImage);
   const deleteImage = useTaskStore((s) => s.deleteImage);
-  const pin = useTaskStore((s) => s.pin);
-  const archiveOne = useTaskStore((s) => s.archiveOne);
-  const moveToGroup = useTaskStore((s) => s.moveToGroup);
   const clickSelect = useTaskStore((s) => s.clickSelect);
-  const groups = useTaskStore((s) => s.groups);
   const selected = useTaskStore((s) => s.selectedIds.includes(task.id));
   const docEnabled = useSettingsStore((s) => s.settings?.doc_enabled ?? true);
 
@@ -53,17 +51,39 @@ export default function TaskItem({
   const [draft, setDraft] = useState(task.content);
   const [dragOver, setDragOver] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [menuAt, setMenuAt] = useState<{
+    x: number;
+    y: number;
+    align: "start" | "end";
+  } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 手动判定双击：不依赖浏览器原生 dblclick 事件（WebView2 下已经踩过一次原生事件
   // 行为跟标准浏览器不一致的坑，这里干脆自己按点击间隔判定，更可靠）。
   const lastTextClickRef = useRef(0);
 
-  const hasMore = task.content.length > PREVIEW_CHAR_LIMIT;
   const previewHtml = useMemo(() => {
     const { text } = truncateMarkdownSource(task.content, PREVIEW_CHAR_LIMIT);
     return renderMarkdown(text);
   }, [task.content]);
   const fullHtml = useMemo(() => renderMarkdown(task.content), [task.content]);
+
+  // 预览被裁切：字符数超限，或没超字符数但被 .md-content-compact 的最大高度截掉
+  // （中文一行字少，180 字远超 5 行，只按字符数判断会出现"被截断却没有展开按钮"）
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el) {
+      setClipped(false);
+      return;
+    }
+    const check = () => setClipped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check); // 窗口变窄时换行变多
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [previewHtml, editing]);
+  const hasMore = task.content.length > PREVIEW_CHAR_LIMIT || clipped;
 
   const autoGrow = () => {
     const el = inputRef.current;
@@ -107,10 +127,21 @@ export default function TaskItem({
       style={rootStyle}
       className={`task-item ${task.completed ? "done" : ""} ${
         selected ? "selected" : ""
-      } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""}`}
+      } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""} ${
+        menuAt ? "menu-open" : ""
+      }`}
+      onMouseDown={(e) => {
+        // Shift+点击做范围多选时，阻止浏览器顺带拖出一片文字选区
+        if (e.shiftKey && !editing) e.preventDefault();
+      }}
       onClick={(e) =>
         clickSelect(task.id, { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey })
       }
+      onContextMenu={(e) => {
+        if (editing || !rootRef) return; // 拖拽浮层里的副本不响应
+        e.preventDefault();
+        setMenuAt({ x: e.clientX + 2, y: e.clientY - 4, align: "start" });
+      }}
       onDrop={onDrop}
       onDragOver={(e) => {
         e.preventDefault();
@@ -127,7 +158,7 @@ export default function TaskItem({
             {...handle.listeners}
             onClick={(e) => e.stopPropagation()}
           >
-            ⠿
+            <Icon name="grip" size={14} />
           </span>
         ) : (
           <span className="drag-handle placeholder-handle" />
@@ -181,7 +212,10 @@ export default function TaskItem({
           >
             {task.content ? (
               <div
-                className="md-content md-content-compact"
+                ref={previewRef}
+                className={`md-content md-content-compact ${
+                  hasMore ? "is-truncated" : ""
+                }`}
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             ) : (
@@ -197,54 +231,24 @@ export default function TaskItem({
         )}
 
         <div className="task-actions" onClick={(e) => e.stopPropagation()}>
-          <span className="actions-trigger" title="更多操作">
-            {task.pinned ? "📌" : "⋯"}
-          </span>
-
-          <div className="actions-menu">
-            <button
-              className={`task-pin ${task.pinned ? "active" : ""}`}
-              onClick={() => pin(task.id, !task.pinned)}
-              title={task.pinned ? "取消置顶" : "置顶"}
-            >
-              {task.pinned ? "📌" : "📍"}
-            </button>
-
-            <select
-              className="task-move"
-              value={task.group_id ?? ""}
-              title="移动到分组"
-              onChange={(e) =>
-                moveToGroup(
-                  task.id,
-                  e.target.value ? Number(e.target.value) : null
-                )
-              }
-            >
-              <option value="">默认组</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              className="task-archive"
-              onClick={() => archiveOne(task.id)}
-              title="归档"
-            >
-              🗄
-            </button>
-
-            <button
-              className="task-del"
-              onClick={() => onRequestDelete(task)}
-              title="删除任务"
-            >
-              ×
-            </button>
-          </div>
+          <button
+            className="icon-btn task-menu-btn"
+            title="更多操作（也可右键）"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
+            }}
+          >
+            <Icon name="more" size={16} />
+          </button>
+          {menuAt && (
+            <TaskMenu
+              task={task}
+              at={menuAt}
+              onClose={() => setMenuAt(null)}
+              onRequestDelete={onRequestDelete}
+            />
+          )}
         </div>
       </div>
 

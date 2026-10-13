@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import ConfirmDialog from "./ConfirmDialog";
+import Icon from "./Icon";
 
 interface Props {
   onClose: () => void;
@@ -21,42 +22,62 @@ export default function ArchivePanel({ onClose }: Props) {
     loadArchived();
   }, [loadArchived]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="archive-panel" onClick={(e) => e.stopPropagation()}>
         <header className="settings-head">
-          <span>归档任务 ({archivedTasks.length})</span>
-          <button className="win-btn" onClick={onClose} title="关闭">
-            ×
+          <span>
+            归档 <span className="head-count">{archivedTasks.length}</span>
+          </span>
+          <button className="icon-btn" onClick={onClose} title="关闭（Esc）">
+            <Icon name="x" size={15} />
           </button>
         </header>
 
         <div className="archive-body">
           {archivedTasks.length === 0 && (
-            <div className="group-empty">暂无归档任务</div>
+            <div className="empty-state">
+              <div className="empty-hint">暂无归档任务</div>
+            </div>
           )}
           {archivedTasks.map((t) => (
             <div key={t.id} className="archive-item">
-              <span className="archive-item-text">
-                {t.content || "（空任务）"}
-              </span>
-              <span className="archive-item-date">
-                {t.archived_at?.slice(0, 10)}
-              </span>
+              <div className="archive-item-main">
+                <span className="archive-item-text" title={t.content}>
+                  {t.content || "（空任务）"}
+                </span>
+                <span className="archive-item-date">
+                  {t.archived_at?.slice(0, 10)}
+                  {t.images.length > 0 && (
+                    <>
+                      {" · "}
+                      <Icon name="image" size={11} /> {t.images.length}
+                    </>
+                  )}
+                </span>
+              </div>
               <div className="archive-item-actions">
                 <button
-                  className="btn ghost"
+                  className="icon-btn"
                   onClick={() => unarchiveOne(t.id)}
                   title="取消归档，回到任务列表"
                 >
-                  取消归档
+                  <Icon name="undo" size={14} />
                 </button>
                 <button
-                  className="btn danger"
+                  className="icon-btn danger"
                   onClick={() => setPending(t)}
                   title="彻底删除（含关联图片）"
                 >
-                  删除
+                  <Icon name="trash" size={14} />
                 </button>
               </div>
             </div>
