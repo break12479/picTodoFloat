@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 
+import { handleMarkdownKey, isComposingKey } from "../lib/mdEdit";
 import { useTaskStore } from "../stores/taskStore";
 import Icon from "./Icon";
+import LiveMarkdownEditor from "./LiveMarkdownEditor";
+
+type NoteMode = "live" | "source";
+const NOTE_MODE_KEY = "pictodo.noteMode";
+
+const readNoteMode = (): NoteMode => {
+  try {
+    return localStorage.getItem(NOTE_MODE_KEY) === "source" ? "source" : "live";
+  } catch {
+    return "live";
+  }
+};
 
 /** 新建任务输入框：Enter 提交，Shift+Enter 换行，自动增高；可选目标分组；可展开为便签全屏输入。 */
 export default function TaskInput() {
@@ -10,12 +23,22 @@ export default function TaskInput() {
   const [value, setValue] = useState("");
   const [groupId, setGroupId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [noteMode, setNoteMode] = useState<NoteMode>(readNoteMode);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (expanded) noteRef.current?.focus();
-  }, [expanded]);
+    if (expanded && noteMode === "source") noteRef.current?.focus();
+  }, [expanded, noteMode]);
+
+  const switchNoteMode = (mode: NoteMode) => {
+    setNoteMode(mode);
+    try {
+      localStorage.setItem(NOTE_MODE_KEY, mode);
+    } catch {
+      // 存不了就只在本次生效
+    }
+  };
 
   const autoGrow = () => {
     const el = taRef.current;
@@ -38,7 +61,12 @@ export default function TaskInput() {
     requestAnimationFrame(autoGrow);
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isComposingKey(e)) return; // 回车可能是输入法在上屏英文，不是提交
+    if (handleMarkdownKey(e, { newline: "shift-enter" })) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -49,18 +77,41 @@ export default function TaskInput() {
     // 便签展开时，覆盖层下面那一整排（分组选择/紧凑输入框/展开/添加按钮）完全不挂载，
     // 而不只是视觉盖住。
     //
-    // 这里原本是 CodeMirror 实现的 Obsidian 式实时预览编辑器，但搜狗输入法快速连续用
-    // 空格确认候选词时会丢字（数字键确认、或放慢速度都不会丢），排查过装饰重建时机、
-    // 回声抑制、去掉自定义装饰插件、拦截空格 keydown 等 5 个方向均未解决，判断是
-    // WebView2 + 搜狗 + CodeMirror 交互更底层的问题，够不到应用代码层面。改回普通
-    // textarea（放弃实时预览），彻底避开这个坑。
+    // 「实时预览」是 Obsidian 式编辑（见 LiveMarkdownEditor）：之前用 CodeMirror 做过一版，
+    // 搜狗输入法快速用空格上屏会丢字，所以改成只有光标所在行是原生 textarea、其余行渲染的做法，
+    // 组字始终在原生 textarea 里完成。「源码」是普通 textarea，作为兜底。
     return (
       <div className="task-input">
-        <div className="note-overlay">
+        <div
+          className="note-overlay"
+          onKeyDown={(e) => {
+            if (isComposingKey(e)) return; // 输入法用 Esc 取消组字时别把便签收起
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              collapse();
+            }
+          }}
+        >
           <div className="note-head">
-            <span className="note-hint">
-              便签 · Enter 换行 · Ctrl+Enter 保存 · Esc 收起
-            </span>
+            <div className="segmented note-mode" role="tablist">
+              <button
+                className={noteMode === "live" ? "active" : ""}
+                onClick={() => switchNoteMode("live")}
+                title="Markdown 实时预览：只有光标所在行显示源码"
+              >
+                实时预览
+              </button>
+              <button
+                className={noteMode === "source" ? "active" : ""}
+                onClick={() => switchNoteMode("source")}
+                title="纯文本编辑 Markdown 源码"
+              >
+                源码
+              </button>
+            </div>
             <div className="note-head-actions">
               <button
                 className="btn primary"
@@ -76,23 +127,28 @@ export default function TaskInput() {
               </button>
             </div>
           </div>
-          <textarea
-            ref={noteRef}
-            className="note-textarea"
-            value={value}
-            placeholder="随手记点什么…"
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                e.preventDefault();
-                submit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                collapse();
-              }
-              // 普通 Enter / Shift+Enter：不拦截，走 textarea 默认换行
-            }}
-          />
+          {noteMode === "live" ? (
+            <LiveMarkdownEditor
+              value={value}
+              onChange={setValue}
+              placeholder="随手记点什么…支持 Markdown"
+              autoFocus
+            />
+          ) : (
+            <textarea
+              ref={noteRef}
+              className="note-textarea"
+              value={value}
+              placeholder="随手记点什么…支持 Markdown"
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (handleMarkdownKey(e, { newline: "enter", tab: true })) e.preventDefault();
+              }}
+            />
+          )}
+          <div className="note-hint">
+            Ctrl+Enter 保存 · Esc 收起 · Ctrl+B 加粗 · Ctrl+I 斜体 · Ctrl+K 链接
+          </div>
         </div>
       </div>
     );
@@ -121,7 +177,7 @@ export default function TaskInput() {
         rows={1}
         value={value}
         placeholder="添加任务…"
-        title="Enter 添加 · Shift+Enter 换行"
+        title="Enter 添加 · Shift+Enter 换行 · 支持 Markdown"
         onChange={(e) => {
           setValue(e.target.value);
           autoGrow();
@@ -132,7 +188,7 @@ export default function TaskInput() {
       <button
         className="icon-btn expand-btn"
         onClick={() => setExpanded(true)}
-        title="展开为便签全屏输入"
+        title="展开为便签（Markdown 实时预览）"
       >
         <Icon name="expand" size={14} />
       </button>

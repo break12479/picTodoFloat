@@ -724,6 +724,18 @@ kbd {
   border-radius: 4px;
 }
 
+.md-content table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 0.95em;
+}
+
+.md-content th,
+.md-content td {
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+}
+
 /* 条目预览：截断字符数之外，兜底一个最大高度避免极端内容撑爆列表 */
 .md-content-compact {
   max-height: 110px;
@@ -1176,7 +1188,7 @@ kbd {
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
 }
 
-.task-input textarea {
+.task-input > textarea {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 28px;
@@ -1191,7 +1203,7 @@ kbd {
   overflow-y: auto;
 }
 
-.task-input textarea::placeholder {
+.task-input > textarea::placeholder {
   color: var(--text-faint);
 }
 
@@ -1255,8 +1267,16 @@ kbd {
 }
 
 .note-hint {
-  font-size: 11.5px;
+  flex: 0 0 auto;
+  font-size: 11px;
   color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-mode button {
+  padding: 4px 10px;
 }
 
 .note-head-actions {
@@ -1281,6 +1301,121 @@ kbd {
 
 .note-textarea:focus {
   border-color: rgba(var(--accent-rgb), 0.5);
+}
+
+/* 便签实时预览：每行渲染，光标所在块是原生 textarea。
+   行内元素的上下外边距清零、行高与 textarea 一致，切换编辑块时文字不上下跳。 */
+.live-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  cursor: text;
+}
+
+.live-editor:focus-within {
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+
+.live-block {
+  min-height: 1.6em;
+}
+
+.live-block.md-content > *,
+.live-block p,
+.live-block ul,
+.live-block ol,
+.live-block li,
+.live-block blockquote {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.live-block h1,
+.live-block h2,
+.live-block h3,
+.live-block h4,
+.live-block h5,
+.live-block h6,
+.live-input.h1,
+.live-input.h2,
+.live-input.h3,
+.live-input.h4,
+.live-input.h5,
+.live-input.h6 {
+  padding: 6px 0 2px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.live-input.h1 {
+  font-size: 1.25em;
+}
+
+.live-input.h2 {
+  font-size: 1.15em;
+}
+
+.live-input.h3 {
+  font-size: 1.08em;
+}
+
+.live-block hr {
+  margin: 0.8em 0;
+}
+
+.live-block.code pre,
+.live-block.table table {
+  margin: 2px 0;
+}
+
+/* 任务列表：去掉圆点，勾选框放在圆点的位置 */
+.live-block li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+.live-block li > input[type="checkbox"] {
+  margin: 0 6px 0 -18px;
+  vertical-align: -2px;
+  cursor: pointer;
+  accent-color: var(--accent-solid);
+}
+
+.live-block a {
+  cursor: text;
+}
+
+.live-input {
+  display: block;
+  width: 100%;
+  min-height: 1.6em;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  caret-color: var(--accent);
+}
+
+.live-input::placeholder,
+.live-placeholder {
+  color: var(--text-faint);
+}
+
+.live-input.code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
 }
 
 /* ---- 弹出菜单 ---- */
