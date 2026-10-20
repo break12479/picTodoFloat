@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useTaskStore } from "../stores/taskStore";
+import Icon from "./Icon";
 
 /** 新建任务输入框：Enter 提交，Shift+Enter 换行，自动增高；可选目标分组；可展开为便签全屏输入。 */
 export default function TaskInput() {
@@ -58,14 +59,20 @@ export default function TaskInput() {
         <div className="note-overlay">
           <div className="note-head">
             <span className="note-hint">
-              便签模式 · Enter 换行 · Ctrl+Enter 保存为任务 · Esc 收起
+              便签 · Enter 换行 · Ctrl+Enter 保存 · Esc 收起
             </span>
             <div className="note-head-actions">
-              <button className="btn ghost" onClick={submit} title="保存为任务">
-                ✓ 保存
+              <button
+                className="btn primary"
+                onClick={submit}
+                disabled={!value.trim()}
+                title="保存为任务（Ctrl+Enter）"
+              >
+                <Icon name="check" size={14} />
+                保存
               </button>
-              <button className="win-btn" onClick={collapse} title="收起">
-                ×
+              <button className="icon-btn" onClick={collapse} title="收起（Esc）">
+                <Icon name="x" size={15} />
               </button>
             </div>
           </div>
@@ -94,7 +101,7 @@ export default function TaskInput() {
   return (
     <div className="task-input">
       <select
-        className="task-move input-group-pick"
+        className="select-chip input-group-pick"
         value={groupId ?? ""}
         title="添加到分组"
         onChange={(e) =>
@@ -113,7 +120,8 @@ export default function TaskInput() {
         ref={taRef}
         rows={1}
         value={value}
-        placeholder="输入新任务…（Enter 添加，Shift+Enter 换行）"
+        placeholder="添加任务…"
+        title="Enter 添加 · Shift+Enter 换行"
         onChange={(e) => {
           setValue(e.target.value);
           autoGrow();
@@ -122,15 +130,20 @@ export default function TaskInput() {
       />
 
       <button
-        className="expand-btn"
+        className="icon-btn expand-btn"
         onClick={() => setExpanded(true)}
         title="展开为便签全屏输入"
       >
-        ⤢
+        <Icon name="expand" size={14} />
       </button>
 
-      <button className="add-btn" onClick={submit} title="添加任务">
-        +
+      <button
+        className="add-btn"
+        onClick={submit}
+        disabled={!value.trim()}
+        title="添加任务（Enter）"
+      >
+        <Icon name="plus" size={16} />
       </button>
     </div>
   );

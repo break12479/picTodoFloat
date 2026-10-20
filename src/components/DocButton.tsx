@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "../lib/tauri";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
+import Icon from "./Icon";
 
 interface Props {
   task: Task;
@@ -96,31 +97,38 @@ export default function DocButton({ task }: Props) {
   return (
     <div className="doc-wrap">
       <button
-        className={`doc-btn ${cls}`}
+        className={`icon-btn doc-btn ${cls}`}
         title={title}
         onClick={handleClick}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
       >
-        📄
+        <Icon name="file" size={15} />
         {broken && <span className="doc-broken-badge">!</span>}
       </button>
 
       {menuOpen && (
         <>
-          <div className="doc-menu-backdrop" onClick={() => setMenuOpen(false)} />
-          <div className="doc-menu">
+          <div className="popover-backdrop" onClick={() => setMenuOpen(false)} />
+          <div className="doc-menu popover">
             {!hasDoc && (
               <>
-                <button onClick={pickAndLink}>关联已有 .md</button>
-                <button onClick={create}>新建文档</button>
+                <button className="popover-item" onClick={pickAndLink}>
+                  关联已有 .md
+                </button>
+                <button className="popover-item" onClick={create}>
+                  新建文档
+                </button>
               </>
             )}
             {hasDoc && broken && (
               <>
-                <button onClick={pickAndLink}>重新关联</button>
+                <button className="popover-item" onClick={pickAndLink}>
+                  重新关联
+                </button>
                 <button
+                  className="popover-item danger"
                   onClick={() => {
                     setMenuOpen(false);
                     unlinkDoc(task.id);
