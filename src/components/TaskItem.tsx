@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DraggableSyntheticListeners } from "@dnd-kit/core";
 
 import { renderMarkdown, truncateMarkdownSource } from "../lib/markdown";
+import { openExternal } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
@@ -40,6 +41,7 @@ export default function TaskItem({
   const clickSelect = useTaskStore((s) => s.clickSelect);
   const selected = useTaskStore((s) => s.selectedIds.includes(task.id));
   const docEnabled = useSettingsStore((s) => s.settings?.doc_enabled ?? true);
+  const setError = useTaskStore((s) => s.setError);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.content);
@@ -115,6 +117,17 @@ export default function TaskItem({
     }
   };
 
+  // Markdown 里的链接：交给系统浏览器打开。绝不能让 WebView 自己跳转——无边框窗口没有后退键，
+  // 整个应用界面会被网页替换掉。返回 true 表示点的是链接（调用方别再当普通点击处理）。
+  const handleLinkClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest("a");
+    if (!a) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    openExternal(a.getAttribute("href")).catch((err) => setError(`打开链接失败：${err}`));
+    return true;
+  };
+
   // 整行即拖拽区：PointerSensor 要移动 5px 才激活，单击/双击/右键不受影响。
   // 编辑中、展开全文弹层打开时不挂，否则在输入框/弹层里拖选文字会变成拖动任务。
   const rowDragListeners = editing || expanded ? undefined : dragListeners;
@@ -140,6 +153,9 @@ export default function TaskItem({
         if (editing || !rootRef) return; // 拖拽浮层里的副本不响应
         e.preventDefault();
         setMenuAt({ x: e.clientX + 2, y: e.clientY - 4, align: "start" });
+      }}
+      onAuxClick={(e) => {
+        if ((e.target as HTMLElement).closest("a")) e.preventDefault();
       }}
       onDrop={onDrop}
       onDragOver={(e) => {
@@ -183,6 +199,7 @@ export default function TaskItem({
           <div
             className="task-text"
             onClick={(e) => {
+              if (handleLinkClick(e)) return;
               const now = Date.now();
               if (now - lastTextClickRef.current < 400) {
                 e.stopPropagation();
@@ -278,6 +295,7 @@ export default function TaskItem({
           <div className="dialog text-modal" onClick={(e) => e.stopPropagation()}>
             <div
               className="md-content text-modal-content"
+              onClick={handleLinkClick}
               dangerouslySetInnerHTML={{ __html: fullHtml }}
             />
             <div className="dialog-actions">

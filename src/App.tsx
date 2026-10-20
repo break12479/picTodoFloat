@@ -13,6 +13,8 @@ import { useTaskStore } from "./stores/taskStore";
 
 // 错误/提示条自动消失的时长
 const TOAST_MS = 4000;
+// 常驻托盘时多久检查一次自动归档（窗口获得焦点时也会检查）
+const AUTO_ARCHIVE_CHECK_MS = 60 * 60 * 1000;
 
 export default function App() {
   const load = useTaskStore((s) => s.load);
@@ -35,6 +37,17 @@ export default function App() {
     load();
     loadSettings();
   }, [load, loadSettings]);
+
+  // 自动归档：get_tasks 只在启动时跑，常驻托盘几周也得按时归档
+  useEffect(() => {
+    const check = () => useTaskStore.getState().runAutoArchive();
+    const timer = window.setInterval(check, AUTO_ARCHIVE_CHECK_MS);
+    window.addEventListener("focus", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
 
   // 透明度：驱动面板背景 alpha（0.50~1.00）
   useEffect(() => {

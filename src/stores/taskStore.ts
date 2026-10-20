@@ -23,6 +23,7 @@ interface TaskState {
   setSearchScope: (scope: string | null) => void;
 
   load: () => Promise<void>;
+  runAutoArchive: () => Promise<void>;
   loadArchived: () => Promise<void>;
   archiveOne: (id: number) => Promise<void>;
   unarchiveOne: (id: number) => Promise<void>;
@@ -224,13 +225,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       }),
     });
     try {
-      for (const id of movedIds) {
-        const before = prev.find((t) => t.id === id);
-        if (before && (before.group_id ?? null) !== targetGroupId) {
-          await invoke<Task>("move_task_to_group", { id, groupId: targetGroupId });
-        }
-      }
-      await invoke<boolean>("reorder_tasks", { orderedIds: orderedTargetIds });
+      // 移组 + 重排在后端一个事务里完成，失败时前后端都整体回到拖拽前
+      await invoke<boolean>("move_tasks", {
+        ids: movedIds,
+        groupId: targetGroupId,
+        orderedIds: orderedTargetIds,
+      });
     } catch (e) {
       set({ tasks: prev, error: String(e) });
     }
@@ -246,6 +246,24 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set({ tasks, groups, loading: false });
     } catch (e) {
       set({ error: String(e), loading: false });
+    }
+  },
+
+  runAutoArchive: async () => {
+    try {
+      const n = await invoke<number>("auto_archive");
+      if (n === 0) return;
+      // 静默刷新：不走 load() 的"加载中"状态，列表不闪
+      const tasks = await invoke<Task[]>("get_tasks");
+      const alive = new Set(tasks.map((t) => t.id));
+      const { selectedId, selectedIds } = get();
+      set({
+        tasks,
+        selectedIds: selectedIds.filter((id) => alive.has(id)),
+        selectedId: selectedId != null && alive.has(selectedId) ? selectedId : null,
+      });
+    } catch {
+      // 后台检查，失败不打扰用户，下次再试
     }
   },
 
@@ -311,10 +329,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   addImage: async (taskId, bytes, name) => {
     try {
-      const img = await invoke<TaskImage>("add_image_from_bytes", {
-        taskId,
-        bytes: Array.from(bytes),
-        originalName: name,
+      // 原始二进制 IPC：请求体就是图片字节（以前转成 JSON 数字数组，几 MB 的截图要序列化很久）
+      const img = await invoke<TaskImage>("add_image_from_bytes", bytes, {
+        headers: {
+          "x-task-id": String(taskId),
+          "x-file-name": encodeURIComponent(name),
+        },
       });
       set({
         tasks: get().tasks.map((t) =>

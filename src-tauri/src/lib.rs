@@ -36,6 +36,11 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例：必须最先注册。再次启动时不另开一份（两个实例会同时写一个数据库、抢 Ctrl+H），
+        // 而是把已在运行的窗口叫出来。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -123,6 +128,8 @@ pub fn run() {
             commands::task::get_archived_tasks,
             commands::task::archive_task,
             commands::task::archive_tasks,
+            commands::task::auto_archive,
+            commands::task::move_tasks,
             commands::image::add_image_from_bytes,
             commands::image::delete_image,
             commands::image::reorder_images,

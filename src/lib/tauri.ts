@@ -1,11 +1,20 @@
-import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
+import {
+  invoke as tauriInvoke,
+  convertFileSrc,
+  type InvokeArgs,
+  type InvokeOptions,
+} from "@tauri-apps/api/core";
 
-/** 薄封装：统一 invoke 入口，便于集中处理错误/日志。返回 Result 由调用方 try/catch。 */
+/**
+ * 薄封装：统一 invoke 入口，便于集中处理错误/日志。返回 Result 由调用方 try/catch。
+ * args 传 Uint8Array 时走原始二进制 IPC（附带参数放 options.headers）。
+ */
 export async function invoke<T>(
   cmd: string,
-  args?: Record<string, unknown>
+  args?: InvokeArgs,
+  options?: InvokeOptions
 ): Promise<T> {
-  return tauriInvoke<T>(cmd, args);
+  return tauriInvoke<T>(cmd, args, options);
 }
 
 /**
