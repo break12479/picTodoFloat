@@ -223,8 +223,8 @@ pub fn set_archived_many(conn: &Connection, ids: &[i64], archived: bool) -> Resu
     Ok(())
 }
 
-/// 完成超过 `days` 天且未归档的任务自动归档。`days <= 0` 时不做任何事（由调用方保证）。
-pub fn auto_archive_stale(conn: &Connection, days: i64) -> Result<(), String> {
+/// 完成超过 `days` 天且未归档的任务自动归档，返回归档条数。`days <= 0` 时不做任何事（由调用方保证）。
+pub fn auto_archive_stale(conn: &Connection, days: i64) -> Result<usize, String> {
     conn.execute(
         "UPDATE tasks
          SET archived = 1, archived_at = datetime('now')
@@ -234,8 +234,7 @@ pub fn auto_archive_stale(conn: &Connection, days: i64) -> Result<(), String> {
            AND completed_at <= datetime('now', ?1)",
         params![format!("-{days} days")],
     )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    .map_err(|e| e.to_string())
 }
 
 /// 移动任务到分组（None = 默认组），落到目标组末尾。
@@ -264,6 +263,34 @@ pub fn set_group(conn: &Connection, id: i64, group_id: Option<i64>) -> Result<Ta
         return Err(format!("任务 {id} 不存在"));
     }
     get_one(conn, id)
+}
+
+/// 多选拖拽：把 moved_ids 移到 group_id（None = 默认组），并按 ordered_ids 重写目标组的
+/// sort_order。一个事务完成，中途失败不会留下"改了一半组"的状态。
+pub fn move_many(
+    conn: &Connection,
+    moved_ids: &[i64],
+    group_id: Option<i64>,
+    ordered_ids: &[i64],
+) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for id in moved_ids {
+        tx.execute(
+            "UPDATE tasks SET group_id = ?1, updated_at = datetime('now')
+             WHERE id = ?2 AND group_id IS NOT ?1",
+            params![group_id, id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    for (i, id) in ordered_ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE tasks SET sort_order = ?1 WHERE id = ?2",
+            params![i as i64, id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn set_doc_path(conn: &Connection, id: i64, doc_path: Option<&str>) -> Result<Task, String> {

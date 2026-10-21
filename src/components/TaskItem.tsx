@@ -1,7 +1,14 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DraggableSyntheticListeners } from "@dnd-kit/core";
 
-import { renderMarkdown, truncateMarkdownSource } from "../lib/markdown";
+import {
+  checklistProgress,
+  enableTaskCheckboxes,
+  renderMarkdown,
+  toggleChecklistItem,
+  truncateMarkdownSource,
+} from "../lib/markdown";
+import { openExternal } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
@@ -40,6 +47,8 @@ export default function TaskItem({
   const clickSelect = useTaskStore((s) => s.clickSelect);
   const selected = useTaskStore((s) => s.selectedIds.includes(task.id));
   const docEnabled = useSettingsStore((s) => s.settings?.doc_enabled ?? true);
+  const setError = useTaskStore((s) => s.setError);
+  const flashAt = useTaskStore((s) => (s.flash?.id === task.id ? s.flash.at : 0));
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.content);
@@ -55,11 +64,33 @@ export default function TaskItem({
   // 行为跟标准浏览器不一致的坑，这里干脆自己按点击间隔判定，更可靠）。
   const lastTextClickRef = useRef(0);
 
+  // 刚贴进图片：滚到可见处并闪一下（拖拽浮层里的副本没有 rootRef，不处理）
+  const elRef = useRef<HTMLDivElement | null>(null);
+  const setRootRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      elRef.current = el;
+      rootRef?.(el);
+    },
+    [rootRef]
+  );
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (!flashAt || !rootRef) return;
+    elRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    setFlashing(true);
+    const t = window.setTimeout(() => setFlashing(false), 900);
+    return () => window.clearTimeout(t);
+  }, [flashAt, rootRef]);
+
   const previewHtml = useMemo(() => {
     const { text } = truncateMarkdownSource(task.content, PREVIEW_CHAR_LIMIT);
-    return renderMarkdown(text);
+    return enableTaskCheckboxes(renderMarkdown(text));
   }, [task.content]);
-  const fullHtml = useMemo(() => renderMarkdown(task.content), [task.content]);
+  const fullHtml = useMemo(
+    () => enableTaskCheckboxes(renderMarkdown(task.content)),
+    [task.content]
+  );
+  const progress = useMemo(() => checklistProgress(task.content), [task.content]);
 
   // 预览被裁切：字符数超限，或没超字符数但被 .md-content-compact 的最大高度截掉
   // （中文一行字少，180 字远超 5 行，只按字符数判断会出现"被截断却没有展开按钮"）
@@ -115,19 +146,78 @@ export default function TaskItem({
     }
   };
 
+  // Markdown 里的链接：交给系统浏览器打开。绝不能让 WebView 自己跳转——无边框窗口没有后退键，
+  // 整个应用界面会被网页替换掉。返回 true 表示点的是链接（调用方别再当普通点击处理）。
+  const handleLinkClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest("a");
+    if (!a) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    openExternal(a.getAttribute("href")).catch((err) => setError(`打开链接失败：${err}`));
+    return true;
+  };
+
+  // 文本里的任务清单（- [ ]）：点任务框改源码里的 [ ] / [x]。截断预览是全文的前缀，
+  // 第 n 个框在预览和全文里是同一项。返回 true 表示点的是任务框。
+  const handleChecklistClick = (e: React.MouseEvent<HTMLElement>) => {
+    const box = e.target as HTMLElement;
+    if (!(box instanceof HTMLInputElement) || box.type !== "checkbox") return false;
+    e.preventDefault(); // 勾选状态以源码为准，别让原生 click 先翻
+    e.stopPropagation();
+    const all = Array.from(e.currentTarget.querySelectorAll('input[type="checkbox"]'));
+    const next = toggleChecklistItem(task.content, all.indexOf(box));
+    if (next != null) update(task.id, next);
+    return true;
+  };
+
+  // 行尾工具（📄 / ⋯）：已关联文档的行照旧占一列（📄 常显）；其余行不预留宽度，
+  // 悬停 / 选中时浮在首行末尾，底下的文字渐隐——窄窗口里文字不会被白白挤掉一截。
+  const inlineTools = docEnabled && !!task.doc_path;
+  const stopRowGestures = {
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+    // 按在按钮上不触发拖动（鼠标走 pointerdown，触摸走 touchstart）
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
+  };
+  const menuButton = (
+    <>
+      <button
+        className="icon-btn task-menu-btn"
+        title="更多操作（也可右键）"
+        aria-label="更多操作"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
+        }}
+      >
+        <Icon name="more" size={16} />
+      </button>
+      {menuAt && (
+        <TaskMenu
+          task={task}
+          at={menuAt}
+          onClose={() => setMenuAt(null)}
+          onRequestDelete={onRequestDelete}
+        />
+      )}
+    </>
+  );
+
   // 整行即拖拽区：PointerSensor 要移动 5px 才激活，单击/双击/右键不受影响。
   // 编辑中、展开全文弹层打开时不挂，否则在输入框/弹层里拖选文字会变成拖动任务。
   const rowDragListeners = editing || expanded ? undefined : dragListeners;
 
   return (
     <div
-      ref={rootRef}
+      ref={setRootRef}
       style={rootStyle}
       {...rowDragListeners}
       className={`task-item ${task.completed ? "done" : ""} ${
         selected ? "selected" : ""
       } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""} ${
         menuAt ? "menu-open" : ""
+      } ${flashing ? "flash" : ""} ${inlineTools ? "inline-tools" : ""} ${
+        !docEnabled ? "tools-narrow" : ""
       }`}
       onMouseDown={(e) => {
         // Shift+点击做范围多选时，阻止浏览器顺带拖出一片文字选区
@@ -140,6 +230,9 @@ export default function TaskItem({
         if (editing || !rootRef) return; // 拖拽浮层里的副本不响应
         e.preventDefault();
         setMenuAt({ x: e.clientX + 2, y: e.clientY - 4, align: "start" });
+      }}
+      onAuxClick={(e) => {
+        if ((e.target as HTMLElement).closest("a")) e.preventDefault();
       }}
       onDrop={onDrop}
       onDragOver={(e) => {
@@ -183,6 +276,7 @@ export default function TaskItem({
           <div
             className="task-text"
             onClick={(e) => {
+              if (handleChecklistClick(e) || handleLinkClick(e)) return;
               const now = Date.now();
               if (now - lastTextClickRef.current < 400) {
                 e.stopPropagation();
@@ -204,61 +298,54 @@ export default function TaskItem({
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             ) : (
-              <span className="placeholder">（空任务）</span>
+              <span className="placeholder">
+                {task.images.length > 0 ? "（图片）" : "（空任务）"}
+              </span>
             )}
           </div>
         )}
 
-        {docEnabled && (
-          <div
-            className="task-doc"
-            onClick={(e) => e.stopPropagation()}
-            // 按住 📄 是长按取消关联，不是拖动（鼠标走 pointerdown，触摸走 touchstart）
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-          >
-            <DocButton task={task} />
-          </div>
+        {inlineTools ? (
+          <>
+            <div className="task-doc" {...stopRowGestures}>
+              <DocButton task={task} />
+            </div>
+            <div className="task-actions" {...stopRowGestures}>
+              {menuButton}
+            </div>
+          </>
+        ) : (
+          !editing && (
+            <div className="task-tools" {...stopRowGestures}>
+              {docEnabled && <DocButton task={task} />}
+              {menuButton}
+            </div>
+          )
         )}
-
-        <div
-          className="task-actions"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          <button
-            className="icon-btn task-menu-btn"
-            title="更多操作（也可右键）"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
-            }}
-          >
-            <Icon name="more" size={16} />
-          </button>
-          {menuAt && (
-            <TaskMenu
-              task={task}
-              at={menuAt}
-              onClose={() => setMenuAt(null)}
-              onRequestDelete={onRequestDelete}
-            />
-          )}
-        </div>
       </div>
 
-      {hasMore && !editing && (
+      {!editing && (hasMore || progress.total > 0) && (
         <div className="task-more">
-          <button
-            className="text-expand-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded(true);
-            }}
-          >
-            展开全文
-          </button>
+          {progress.total > 0 && (
+            <span
+              className={`check-progress ${progress.done === progress.total ? "all-done" : ""}`}
+              title="清单进度"
+            >
+              <Icon name="check" size={11} />
+              {progress.done}/{progress.total}
+            </span>
+          )}
+          {hasMore && (
+            <button
+              className="text-expand-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(true);
+              }}
+            >
+              展开全文
+            </button>
+          )}
         </div>
       )}
 
@@ -278,6 +365,7 @@ export default function TaskItem({
           <div className="dialog text-modal" onClick={(e) => e.stopPropagation()}>
             <div
               className="md-content text-modal-content"
+              onClick={(e) => handleChecklistClick(e) || handleLinkClick(e)}
               dangerouslySetInnerHTML={{ __html: fullHtml }}
             />
             <div className="dialog-actions">

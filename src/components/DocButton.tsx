@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { invoke } from "../lib/tauri";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
+import ConfirmDialog from "./ConfirmDialog";
 import Icon from "./Icon";
 
 interface Props {
   task: Task;
 }
 
-const LONG_PRESS_MS = 550;
-
-/** 📄 关联文档：无文档→关联/新建；有文档→点击打开、长按取消关联；断链→红点+重新关联。 */
+/**
+ * 📄 关联文档：无文档→关联/新建；有文档→点击打开、右键菜单可更换 / 解除关联；断链→红点+重新关联。
+ * 解除关联要二次确认：它会在文档末尾追加一行备注（以前是长按 0.55 秒直接解除，容易误触且无法撤销）。
+ */
 export default function DocButton({ task }: Props) {
   const linkDoc = useTaskStore((s) => s.linkDoc);
   const createDoc = useTaskStore((s) => s.createDoc);
@@ -21,11 +23,10 @@ export default function DocButton({ task }: Props) {
 
   const [broken, setBroken] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const timer = useRef<number | null>(null);
-  const longFired = useRef(false);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
 
   const hasDoc = !!task.doc_path;
+  const docName = task.doc_path?.split(/[\\/]/).pop() ?? "";
 
   useEffect(() => {
     let alive = true;
@@ -41,30 +42,7 @@ export default function DocButton({ task }: Props) {
     };
   }, [task.id, task.doc_path]);
 
-  const clearTimer = () => {
-    if (timer.current != null) {
-      window.clearTimeout(timer.current);
-      timer.current = null;
-    }
-  };
-
-  // 长按（仅在已关联时）→ 取消关联
-  const onPointerDown = () => {
-    if (!hasDoc) return;
-    longFired.current = false;
-    timer.current = window.setTimeout(() => {
-      longFired.current = true;
-      unlinkDoc(task.id);
-    }, LONG_PRESS_MS);
-  };
-  const onPointerUp = () => clearTimer();
-  const onPointerLeave = () => clearTimer();
-
   const handleClick = () => {
-    if (longFired.current) {
-      longFired.current = false; // 长按已处理，吞掉本次 click
-      return;
-    }
     if (hasDoc && !broken) openDoc(task.id);
     else setMenuOpen((o) => !o);
   };
@@ -91,7 +69,7 @@ export default function DocButton({ task }: Props) {
   const title = broken
     ? "文档断链，点击重新关联"
     : hasDoc
-    ? "点击打开 · 长按取消关联"
+    ? `打开「${docName}」 · 右键更换 / 解除关联`
     : "关联 / 新建文档";
 
   return (
@@ -99,10 +77,14 @@ export default function DocButton({ task }: Props) {
       <button
         className={`icon-btn doc-btn ${cls}`}
         title={title}
+        aria-label={title}
         onClick={handleClick}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerLeave}
+        onContextMenu={(e) => {
+          // 自己的菜单，不弹任务菜单
+          e.preventDefault();
+          e.stopPropagation();
+          if (hasDoc) setMenuOpen(true);
+        }}
       >
         <Icon name="file" size={15} />
         {broken && <span className="doc-broken-badge">!</span>}
@@ -122,24 +104,51 @@ export default function DocButton({ task }: Props) {
                 </button>
               </>
             )}
-            {hasDoc && broken && (
+            {hasDoc && !broken && (
+              <button
+                className="popover-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openDoc(task.id);
+                }}
+              >
+                打开文档
+              </button>
+            )}
+            {hasDoc && (
               <>
                 <button className="popover-item" onClick={pickAndLink}>
-                  重新关联
+                  {broken ? "重新关联" : "更换文档…"}
                 </button>
                 <button
                   className="popover-item danger"
                   onClick={() => {
                     setMenuOpen(false);
-                    unlinkDoc(task.id);
+                    setConfirmUnlink(true);
                   }}
                 >
-                  移除关联
+                  {broken ? "移除关联" : "解除关联…"}
                 </button>
               </>
             )}
           </div>
         </>
+      )}
+
+      {confirmUnlink && (
+        <ConfirmDialog
+          message={
+            broken
+              ? `移除与「${docName}」的关联？（文档已不存在）`
+              : `解除与「${docName}」的关联？文档不会被删除，但会在它末尾追加一行「已断联」备注。`
+          }
+          confirmText={broken ? "移除关联" : "解除关联"}
+          onCancel={() => setConfirmUnlink(false)}
+          onConfirm={() => {
+            setConfirmUnlink(false);
+            unlinkDoc(task.id);
+          }}
+        />
       )}
     </div>
   );

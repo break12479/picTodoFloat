@@ -132,6 +132,8 @@ CREATE INDEX idx_images_task   ON task_images(task_id);
 | `auto_sort` | `group_id?` | `Task[]` | 未完成在上、已完成沉底（最近完成在上） |
 | `pin_task` | `id, pinned` | `Task` | 置顶/取消置顶 |
 | `move_task_to_group` | `id, group_id?` | `Task` | 移动到分组 |
+| `move_tasks` | `ids[], group_id?, ordered_ids[]` | `bool` | 多选拖拽落下：移组 + 重排目标组，一个事务 |
+| `auto_archive` | — | `number` | 按设置天数归档过期的已完成任务，返回条数（前端窗口获得焦点 / 每小时调用） |
 
 ### 分组
 
@@ -147,7 +149,7 @@ CREATE INDEX idx_images_task   ON task_images(task_id);
 
 | Command | 参数 | 返回 | 说明 |
 | --- | --- | --- | --- |
-| `add_image_from_bytes` | `task_id, bytes, original_name?` | `TaskImage` | **核心**：接收粘贴/拖入的图片二进制，落盘原图 + 生成缩略图 |
+| `add_image_from_bytes` | 请求体 = 图片原始字节；请求头 `x-task-id`、`x-file-name`（URL 编码） | `TaskImage` | **核心**：接收粘贴/拖入的图片二进制，落盘原图 + 生成缩略图。async，解码 / 缩放在后台线程 |
 | `delete_image` | `image_id` | `bool` | 删记录 + 删文件 |
 | `reorder_images` | `task_id, ordered_ids[]` | `bool` | 图片内排序 |
 | `get_image_data` | `path` | `bytes`（或用 `convertFileSrc`） | 供前端渲染 |
@@ -166,7 +168,7 @@ CREATE INDEX idx_images_task   ON task_images(task_id);
 | Command | 参数 | 返回 |
 | --- | --- | --- |
 | `get_settings` | — | `Settings` |
-| `update_settings` | `patch` | `Settings`（含应用透明度、自启、笔记目录副作用） |
+| `update_settings` | `patch: SettingsPatch`（camelCase，未给的字段不改） | `Settings`。快捷键（重新注册全局快捷键）、开机自启这两项有副作用的先执行，成功才写库，失败返回错误、设置保持原样；返回值带运行时字段 `hotkey_error`（快捷键注册失败原因） |
 | `pick_folder` | — | `string?`（选笔记文件夹） |
 
 ------
@@ -180,10 +182,11 @@ CREATE INDEX idx_images_task   ON task_images(task_id);
   └─ 前端 onPaste(e)
        ├─ 遍历 e.clipboardData.items，找 type 以 "image/" 开头的项
        ├─ item.getAsFile() → Blob → arrayBuffer → Uint8Array
-       └─ invoke("add_image_from_bytes", { taskId, bytes, originalName })
-            └─ Rust:
-                 ├─ 写原图 AppData/images/{task}/{uuid}.png
-                 ├─ image крейт 解码 → resize 40×40 → 写 thumb
+       └─ invoke("add_image_from_bytes", bytes, { headers: { "x-task-id", "x-file-name" } })
+            └─ Rust（async，解码 / 缩放在 spawn_blocking 里）:
+                 ├─ image 解码（按 EXIF 方向摆正）确认是有效图片
+                 ├─ 写原图 images/{task}/{uuid}.{ext}：PNG/JPEG/WebP/GIF/BMP 原样写入，其它格式转 PNG
+                 ├─ 生成 120×120 缩略图（界面 40px 显示，高 DPI 备足像素）→ 写 thumb
                  ├─ INSERT task_images
                  └─ 返回 TaskImage
   └─ store 更新，缩略图行渲染新图

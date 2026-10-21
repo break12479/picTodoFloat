@@ -2,32 +2,25 @@ import { useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { useSettingsStore } from "../stores/settingsStore";
+import HotkeyField from "./HotkeyField";
 import Icon from "./Icon";
 
 interface Props {
   onClose: () => void;
 }
 
-/** 设置面板：外观 / 任务 / 关联文档 / 数据，四组。 */
+/** 设置面板：外观 / 窗口 / 任务 / 关联文档 / 数据。保存失败会回滚并在底部提示。 */
 export default function SettingsPanel({ onClose }: Props) {
   const settings = useSettingsStore((s) => s.settings);
-  const setNotesFolder = useSettingsStore((s) => s.setNotesFolder);
+  const update = useSettingsStore((s) => s.update);
   const setOpacity = useSettingsStore((s) => s.setOpacity);
-  const setAutoStart = useSettingsStore((s) => s.setAutoStart);
-  const setTheme = useSettingsStore((s) => s.setTheme);
   const dataDir = useSettingsStore((s) => s.dataDir);
   const setDataDir = useSettingsStore((s) => s.setDataDir);
-  const setHideCompleted = useSettingsStore((s) => s.setHideCompleted);
-  const setAutoArchiveDays = useSettingsStore((s) => s.setAutoArchiveDays);
-  const setDocEnabled = useSettingsStore((s) => s.setDocEnabled);
 
   const current = settings?.notes_folder;
   const opacity = settings?.opacity ?? 85;
-  const autoStart = settings?.auto_start ?? false;
   const theme = settings?.theme ?? "dark";
-  const hideCompleted = settings?.hide_completed ?? true;
-  const autoArchiveDays = settings?.auto_archive_days ?? 0;
-  const docEnabled = settings?.doc_enabled ?? true;
+  const density = settings?.density ?? "comfortable";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -47,16 +40,41 @@ export default function SettingsPanel({ onClose }: Props) {
   const pickFolder = async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      await setNotesFolder(selected);
+      await update({ notes_folder: selected });
     }
   };
 
+  /** 开关行：整行可点。 */
+  const toggle = (
+    key: "fade_when_idle" | "always_on_top" | "edge_hide" | "auto_start" | "hide_completed" | "doc_enabled",
+    label: string,
+    hint?: string
+  ) => (
+    <label className="settings-row">
+      <span className="settings-label">
+        {label}
+        {hint && <span className="settings-hint">{hint}</span>}
+      </span>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={settings?.[key] ?? false}
+        onChange={(e) => update({ [key]: e.target.checked })}
+      />
+    </label>
+  );
+
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="settings-panel"
+        role="dialog"
+        aria-label="设置"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="settings-head">
           <span>设置</span>
-          <button className="icon-btn" onClick={onClose} title="关闭">
+          <button className="icon-btn" onClick={onClose} title="关闭" aria-label="关闭设置">
             <Icon name="x" size={15} />
           </button>
         </header>
@@ -70,17 +88,42 @@ export default function SettingsPanel({ onClose }: Props) {
               <div className="segmented">
                 <button
                   className={theme === "dark" ? "active" : ""}
-                  onClick={() => setTheme("dark")}
+                  aria-pressed={theme === "dark"}
+                  onClick={() => update({ theme: "dark" })}
                 >
                   <Icon name="moon" size={13} />
                   深色
                 </button>
                 <button
                   className={theme === "light" ? "active" : ""}
-                  onClick={() => setTheme("light")}
+                  aria-pressed={theme === "light"}
+                  onClick={() => update({ theme: "light" })}
                 >
                   <Icon name="sun" size={13} />
                   浅色
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <span className="settings-label">
+                列表密度
+                <span className="settings-hint">紧凑：字号行距更小，一屏放下更多任务</span>
+              </span>
+              <div className="segmented">
+                <button
+                  className={density === "comfortable" ? "active" : ""}
+                  aria-pressed={density === "comfortable"}
+                  onClick={() => update({ density: "comfortable" })}
+                >
+                  舒适
+                </button>
+                <button
+                  className={density === "compact" ? "active" : ""}
+                  aria-pressed={density === "compact"}
+                  onClick={() => update({ density: "compact" })}
+                >
+                  紧凑
                 </button>
               </div>
             </div>
@@ -94,24 +137,37 @@ export default function SettingsPanel({ onClose }: Props) {
                 min={50}
                 max={100}
                 value={opacity}
+                aria-label="面板不透明度"
                 onChange={(e) => setOpacity(Number(e.target.value))}
                 className="opacity-slider"
               />
             </div>
+
+            {toggle("fade_when_idle", "鼠标移开时变淡", "移开后面板半透明，不挡后面的内容；移回即恢复")}
+          </section>
+
+          <section className="settings-section">
+            <h3 className="settings-section-title">窗口</h3>
+            {toggle("always_on_top", "始终置顶", "也可以点标题栏的图钉切换")}
+            {toggle(
+              "edge_hide",
+              "贴边自动隐藏",
+              "把窗口拖到屏幕上 / 左 / 右边缘，鼠标移开就收起只留一条边，移回来展开"
+            )}
+            <div className="settings-row stacked">
+              <span className="settings-label">
+                显示 / 隐藏窗口的快捷键
+                <span className="settings-hint">全局生效，窗口没有焦点时也能用</span>
+              </span>
+              <HotkeyField />
+            </div>
+            {toggle("auto_start", "开机自启")}
           </section>
 
           <section className="settings-section">
             <h3 className="settings-section-title">任务</h3>
 
-            <label className="settings-row">
-              <span className="settings-label">折叠已完成任务</span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={hideCompleted}
-                onChange={(e) => setHideCompleted(e.target.checked)}
-              />
-            </label>
+            {toggle("hide_completed", "默认折叠已完成任务", "各分组的「已完成 N」可以单独展开 / 折叠")}
 
             <div className="settings-row">
               <span className="settings-label">
@@ -120,8 +176,9 @@ export default function SettingsPanel({ onClose }: Props) {
               </span>
               <select
                 className="select-chip"
-                value={autoArchiveDays}
-                onChange={(e) => setAutoArchiveDays(Number(e.target.value))}
+                value={settings?.auto_archive_days ?? 0}
+                aria-label="完成后自动归档"
+                onChange={(e) => update({ auto_archive_days: Number(e.target.value) })}
               >
                 <option value={0}>关闭</option>
                 <option value={3}>3 天后</option>
@@ -130,33 +187,12 @@ export default function SettingsPanel({ onClose }: Props) {
                 <option value={30}>30 天后</option>
               </select>
             </div>
-
-            <label className="settings-row">
-              <span className="settings-label">开机自启</span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={autoStart}
-                onChange={(e) => setAutoStart(e.target.checked)}
-              />
-            </label>
           </section>
 
           <section className="settings-section">
             <h3 className="settings-section-title">关联文档</h3>
 
-            <label className="settings-row">
-              <span className="settings-label">
-                显示文档入口
-                <span className="settings-hint">关闭只隐藏图标，已有关联不会断开</span>
-              </span>
-              <input
-                type="checkbox"
-                className="switch"
-                checked={docEnabled}
-                onChange={(e) => setDocEnabled(e.target.checked)}
-              />
-            </label>
+            {toggle("doc_enabled", "显示文档入口", "关闭只隐藏图标，已有关联不会断开")}
 
             <div className="settings-row stacked">
               <span className="settings-label">
@@ -174,7 +210,7 @@ export default function SettingsPanel({ onClose }: Props) {
                   更改
                 </button>
                 {current && (
-                  <button className="btn ghost" onClick={() => setNotesFolder(null)}>
+                  <button className="btn ghost" onClick={() => update({ notes_folder: "" })}>
                     重置
                   </button>
                 )}

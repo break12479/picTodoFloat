@@ -7,6 +7,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import { showCompleted } from "../lib/order";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
@@ -38,9 +39,13 @@ export default function GroupSection({
   const renameGroup = useTaskStore((s) => s.renameGroup);
   const deleteGroup = useTaskStore((s) => s.deleteGroup);
   const hideCompleted = useSettingsStore((s) => s.settings?.hide_completed ?? true);
-  const setHideCompleted = useSettingsStore((s) => s.setHideCompleted);
+  // 「已完成 N」只开合本组；默认开合跟设置走
+  const doneToggled = useTaskStore((s) => s.doneToggled);
+  const toggleDone = useTaskStore((s) => s.toggleDone);
 
-  const [collapsed, setCollapsed] = useState(false);
+  // 折叠状态放在 store 里：跨重启记忆，也让多选 / 批量操作知道哪些任务看不见
+  const collapsed = useTaskStore((s) => s.collapsed.includes(containerKey));
+  const toggleCollapsed = useTaskStore((s) => s.toggleCollapsed);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(title);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -66,7 +71,7 @@ export default function GroupSection({
   const splitCompleted = containerKey !== "pinned";
   const activeItems = splitCompleted ? items.filter((t) => !t.completed) : items;
   const doneItems = splitCompleted ? items.filter((t) => t.completed) : [];
-  const showDone = !splitCompleted || !hideCompleted;
+  const showDone = !splitCompleted || showCompleted(containerKey, { hideCompleted, doneToggled });
   const visibleItems = showDone ? items : activeItems;
   const ids = visibleItems.map((t) => t.id);
 
@@ -90,8 +95,10 @@ export default function GroupSection({
       >
         <button
           className={`group-collapse ${collapsed ? "" : "open"}`}
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => toggleCollapsed(containerKey)}
           title={collapsed ? "展开" : "折叠"}
+          aria-label={`${collapsed ? "展开" : "折叠"}分组「${title}」`}
+          aria-expanded={!collapsed}
         >
           <Icon name="chevron" size={13} />
         </button>
@@ -138,6 +145,7 @@ export default function GroupSection({
             <button
               className="icon-btn group-btn"
               title="本组自动排序（已完成沉底）"
+              aria-label={`分组「${title}」自动排序`}
               onClick={() => autoSort(groupId)}
             >
               <Icon name="sort" size={13} />
@@ -147,6 +155,7 @@ export default function GroupSection({
             <button
               className="icon-btn group-btn danger"
               title="删除分组（组内任务归默认组）"
+              aria-label={`删除分组「${title}」`}
               onClick={() =>
                 items.length > 0 ? setConfirmDelete(true) : deleteGroup(groupId)
               }
@@ -183,10 +192,11 @@ export default function GroupSection({
             {splitCompleted && doneItems.length > 0 && (
               <button
                 className="done-toggle"
-                onClick={() => setHideCompleted(!hideCompleted)}
-                title={hideCompleted ? "展开已完成" : "折叠已完成"}
+                onClick={() => toggleDone(containerKey)}
+                title={showDone ? "折叠本组已完成" : "展开本组已完成"}
+                aria-expanded={showDone}
               >
-                <span className={`done-toggle-caret ${hideCompleted ? "" : "open"}`}>
+                <span className={`done-toggle-caret ${showDone ? "open" : ""}`}>
                   <Icon name="chevron" size={11} />
                 </span>
                 已完成 {doneItems.length}

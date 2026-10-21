@@ -18,14 +18,29 @@ interface Props {
 
 /**
  * 任务操作菜单：置顶 / 归档 / 移动到分组 / 删除。
+ * 在多选中的某一项上打开时，菜单作用于全部已选（看得见的）任务。
  * 用 portal + fixed 定位 + 打开后按实际尺寸夹回视口内（靠近底部时向上翻），
  * 不受列表滚动容器裁切，也不受拖拽时祖先 transform 影响。
  */
 export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) {
   const pin = useTaskStore((s) => s.pin);
   const archiveOne = useTaskStore((s) => s.archiveOne);
+  const archiveMany = useTaskStore((s) => s.archiveMany);
   const moveToGroup = useTaskStore((s) => s.moveToGroup);
+  const moveManyToGroup = useTaskStore((s) => s.moveManyToGroup);
+  const requestBulkDelete = useTaskStore((s) => s.requestBulkDelete);
   const groups = useTaskStore((s) => s.groups);
+
+  // 打开时定下作用对象：右键的任务在多选里 → 全部已选；否则只是它自己
+  const [targets] = useState<Task[]>(() => {
+    const st = useTaskStore.getState();
+    const sel = st.effectiveSelection();
+    if (sel.length < 2 || !sel.includes(task.id)) return [task];
+    return sel.map((id) => st.tasks.find((t) => t.id === id)).filter((t): t is Task => !!t);
+  });
+  const multi = targets.length > 1;
+  const ids = targets.map((t) => t.id);
+  const allPinned = targets.every((t) => t.pinned);
 
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: at.x, top: at.y });
@@ -57,7 +72,9 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
     fn();
   };
 
-  const currentGroup = task.group_id ?? null;
+  // 全部目标都在同一组时才打勾
+  const groupsOf = new Set(targets.map((t) => t.group_id ?? null));
+  const currentGroup = groupsOf.size === 1 ? [...groupsOf][0] : undefined;
 
   // portal 后 React 合成事件仍会沿组件树冒泡到任务行（触发选中 / 拖动），这里统一截住
   return createPortal(
@@ -80,11 +97,20 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
         className="popover"
         style={{ left: pos.left, top: pos.top }}
       >
-        <button className="popover-item" onClick={run(() => pin(task.id, !task.pinned))}>
+        {multi && <div className="popover-label">已选 {targets.length} 项</div>}
+        <button
+          className="popover-item"
+          onClick={run(() =>
+            targets.forEach((t) => t.pinned === allPinned && pin(t.id, !allPinned))
+          )}
+        >
           <Icon name="pin" size={14} />
-          {task.pinned ? "取消置顶" : "置顶"}
+          {allPinned ? "取消置顶" : "置顶"}
         </button>
-        <button className="popover-item" onClick={run(() => archiveOne(task.id))}>
+        <button
+          className="popover-item"
+          onClick={run(() => (multi ? archiveMany(ids) : archiveOne(task.id)))}
+        >
           <Icon name="archive" size={14} />
           归档
         </button>
@@ -97,7 +123,9 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
               key={g.id ?? "default"}
               className="popover-item"
               onClick={run(() => {
-                if (g.id !== currentGroup) moveToGroup(task.id, g.id);
+                if (g.id === currentGroup) return;
+                if (multi) moveManyToGroup(ids, g.id);
+                else moveToGroup(task.id, g.id);
               })}
             >
               <span className="popover-check">
@@ -111,7 +139,7 @@ export default function TaskMenu({ task, at, onClose, onRequestDelete }: Props) 
         <div className="popover-sep" />
         <button
           className="popover-item danger"
-          onClick={run(() => onRequestDelete(task))}
+          onClick={run(() => (multi ? requestBulkDelete(ids) : onRequestDelete(task)))}
         >
           <Icon name="trash" size={14} />
           删除

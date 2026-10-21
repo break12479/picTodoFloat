@@ -52,6 +52,13 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             .map_err(|e| format!("写入 user_version 失败: {e}"))?;
     }
 
+    if version < 4 {
+        conn.execute_batch(MIGRATION_V4)
+            .map_err(|e| format!("迁移 v4 失败: {e}"))?;
+        conn.execute_batch("PRAGMA user_version = 4;")
+            .map_err(|e| format!("写入 user_version 失败: {e}"))?;
+    }
+
     Ok(())
 }
 
@@ -68,6 +75,15 @@ ALTER TABLE settings ADD COLUMN hide_completed INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE settings ADD COLUMN auto_archive_days INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE settings ADD COLUMN doc_enabled INTEGER NOT NULL DEFAULT 1;
 CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived);
+"#;
+
+// v4：列表密度、窗口置顶开关、鼠标移开变淡、贴边隐藏、可自定义的显隐快捷键
+const MIGRATION_V4: &str = r#"
+ALTER TABLE settings ADD COLUMN density TEXT NOT NULL DEFAULT 'comfortable';
+ALTER TABLE settings ADD COLUMN always_on_top INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE settings ADD COLUMN fade_when_idle INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE settings ADD COLUMN edge_hide INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE settings ADD COLUMN toggle_hotkey TEXT NOT NULL DEFAULT 'Ctrl+H';
 "#;
 
 const MIGRATION_V1: &str = r#"

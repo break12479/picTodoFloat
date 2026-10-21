@@ -21,8 +21,8 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-/// 切换主窗口显隐（供全局快捷键 Ctrl+H）。
-fn toggle_main_window(app: &tauri::AppHandle) {
+/// 切换主窗口显隐（供全局显隐快捷键，默认 Ctrl+H，可在设置里改）。
+pub(crate) fn toggle_main_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         match w.is_visible() {
             Ok(true) => {
@@ -36,6 +36,11 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例：必须最先注册。再次启动时不另开一份（两个实例会同时写一个数据库、抢 Ctrl+H），
+        // 而是把已在运行的窗口叫出来。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -51,6 +56,9 @@ pub fn run() {
             fs::create_dir_all(&data_root)?;
             let db_path = data_root.join("pictodo.db");
             let conn = db::init(&db_path).map_err(std::io::Error::other)?;
+            let hotkey = db::settings::get(&conn)
+                .map(|s| s.toggle_hotkey)
+                .unwrap_or_else(|_| "Ctrl+H".into());
             app.manage(AppState {
                 db: Mutex::new(conn),
                 data_root: Mutex::new(data_root),
@@ -82,19 +90,13 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // ---- 全局快捷键 Ctrl+H：显隐窗口（即使未聚焦也生效）----
-            {
-                use tauri_plugin_global_shortcut::{
-                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-                };
-                let ctrl_h = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyH);
-                // 热键可能已被其他程序（或另一个本应用实例）占用：注册失败不应让整个应用启动崩溃
-                if let Err(e) = app.global_shortcut().on_shortcut(ctrl_h, |app, _sc, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        toggle_main_window(app);
-                    }
-                }) {
-                    eprintln!("全局快捷键 Ctrl+H 注册失败（可能已被占用），已跳过：{e}");
+            // ---- 全局显隐快捷键（默认 Ctrl+H，设置里可改；即使未聚焦也生效）----
+            // 可能已被其他程序占用：注册失败不让应用启动崩溃，原因记下来在设置页提示
+            app.manage(services::hotkey::HotkeyState::default());
+            if let Err(e) = services::hotkey::register(app.handle(), &hotkey) {
+                eprintln!("{e}");
+                if let Ok(mut slot) = app.state::<services::hotkey::HotkeyState>().error.lock() {
+                    *slot = Some(e);
                 }
             }
 
@@ -123,6 +125,8 @@ pub fn run() {
             commands::task::get_archived_tasks,
             commands::task::archive_task,
             commands::task::archive_tasks,
+            commands::task::auto_archive,
+            commands::task::move_tasks,
             commands::image::add_image_from_bytes,
             commands::image::delete_image,
             commands::image::reorder_images,
