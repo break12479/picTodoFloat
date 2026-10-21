@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#6eabff"/>
+      <stop offset="1" stop-color="#2551dc"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eaf2ff"/>
+      <stop offset="1" stop-color="#c3d9ff"/>
+    </linearGradient>
+    <linearGradient id="check" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4b8cff"/>
+      <stop offset="1" stop-color="#2551dc"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="20"/>
+      <feOffset dy="24"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="photoClip"><rect x="-210" y="-170" width="420" height="340" rx="52"/></clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#tile)"/>
+
+  <!-- photo card (back, tilted) -->
+  <g transform="translate(640 372) rotate(10)" filter="url(#shadow)">
+    <g clip-path="url(#photoClip)">
+      <rect x="-210" y="-170" width="420" height="340" fill="url(#sky)"/>
+      <circle cx="-92" cy="-84" r="46" fill="#ffc23d"/>
+      <path d="M-150 170 L-6 30 L130 170 Z" fill="#8fb6fa"/>
+      <path d="M-30 170 L108 -36 L260 170 Z" fill="#5f97f7"/>
+    </g>
+  </g>
+
+  <!-- todo card (front, floating) -->
+  <g filter="url(#shadow)">
+    <rect x="168" y="392" width="536" height="436" rx="68" fill="#ffffff"/>
+    <!-- row 1: done -->
+    <circle cx="292" cy="524" r="60" fill="url(#check)"/>
+    <path d="M263 525 L283 546 L322 504" fill="none" stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="384" y="503" width="252" height="42" rx="21" fill="#c4d2e8"/>
+    <!-- row 2: open -->
+    <circle cx="292" cy="700" r="48" fill="none" stroke="#a3b4cf" stroke-width="20"/>
+    <rect x="384" y="679" width="196" height="42" rx="21" fill="#dde5f2"/>
+  </g>
+</svg>
