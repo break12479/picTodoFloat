@@ -6,15 +6,27 @@ import type { Group, Task, TaskImage } from "../types";
 import { useSettingsStore } from "./settingsStore";
 
 const COLLAPSED_KEY = "pictodo.collapsedGroups";
+const DONE_TOGGLED_KEY = "pictodo.doneToggled";
 
-const readCollapsed = (): string[] => {
+const readKeys = (storageKey: string): string[] => {
   try {
-    const v = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    const v = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
     return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
   } catch {
     return [];
   }
 };
+
+const saveKeys = (storageKey: string, keys: string[]) => {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(keys));
+  } catch {
+    // 存不了就只在本次生效
+  }
+};
+
+const toggleKey = (keys: string[], key: string) =>
+  keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
 
 /** 输入框里暂存、还没提交的图片（随新任务一起保存）。 */
 export interface DraftImage {
@@ -44,6 +56,11 @@ interface TaskState {
   /** 折叠起来的分区（容器键），跨重启记忆 */
   collapsed: string[];
   toggleCollapsed: (key: string) => void;
+  /** 单独点过「已完成 N」的分组（与设置里的默认折叠相反），跨重启记忆 */
+  doneToggled: string[];
+  toggleDone: (key: string) => void;
+  /** 设置里改了默认折叠时清空各组的单独设定 */
+  resetDoneToggles: () => void;
   /** 屏幕上实际显示的任务 id（展示顺序） */
   visibleIds: () => number[];
   /** 生效的多选：只算看得见的（搜索过滤掉、折叠起来的不算），按展示顺序 */
@@ -124,24 +141,32 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   selectedIds: [],
   flash: null,
   draftImages: [],
-  collapsed: readCollapsed(),
+  collapsed: readKeys(COLLAPSED_KEY),
+  doneToggled: readKeys(DONE_TOGGLED_KEY),
   bulkDeleteIds: null,
 
   toggleCollapsed: (key) => {
-    const cur = get().collapsed;
-    const collapsed = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+    const collapsed = toggleKey(get().collapsed, key);
     set({ collapsed });
-    try {
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed));
-    } catch {
-      // 存不了就只在本次生效
-    }
+    saveKeys(COLLAPSED_KEY, collapsed);
+  },
+
+  toggleDone: (key) => {
+    const doneToggled = toggleKey(get().doneToggled, key);
+    set({ doneToggled });
+    saveKeys(DONE_TOGGLED_KEY, doneToggled);
+  },
+
+  resetDoneToggles: () => {
+    set({ doneToggled: [] });
+    saveKeys(DONE_TOGGLED_KEY, []);
   },
 
   visibleIds: () => {
-    const { tasks, groups, collapsed, searchOpen, searchQuery, searchScope } = get();
+    const { tasks, groups, collapsed, doneToggled, searchOpen, searchQuery, searchScope } = get();
     return visibleTaskIds(tasks, groups, {
       collapsed,
+      doneToggled,
       hideCompleted: useSettingsStore.getState().settings?.hide_completed ?? true,
       match: searchOpen ? searchMatcher(searchQuery, searchScope) : undefined,
     });

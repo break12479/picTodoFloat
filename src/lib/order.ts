@@ -35,11 +35,17 @@ export function searchMatcher(
 export interface Visibility {
   /** 折叠起来的容器键 */
   collapsed: readonly string[];
-  /** 「已完成」是否折叠（置顶分区不受影响） */
+  /** 「已完成」默认是否折叠（设置项；置顶分区不受影响） */
   hideCompleted: boolean;
+  /** 单独点过「已完成 N」、与默认相反的分组 */
+  doneToggled: readonly string[];
   /** 搜索过滤 */
   match?: (t: Task) => boolean;
 }
+
+/** 某个分组此刻是否展开「已完成」：默认跟设置走，单独点过的组反过来。 */
+export const showCompleted = (key: string, vis: Pick<Visibility, "hideCompleted" | "doneToggled">) =>
+  vis.hideCompleted === vis.doneToggled.includes(key);
 
 /**
  * 屏幕上实际显示的任务，按展示顺序：与 GroupSection 的渲染一致——组内未完成在前、
@@ -52,7 +58,7 @@ export function visibleTaskIds(tasks: Task[], groups: Group[], vis: Visibility):
     if (vis.collapsed.includes(key)) return [];
     if (key === "pinned") return items;
     const active = items.filter((t) => !t.completed);
-    return vis.hideCompleted ? active : [...active, ...items.filter((t) => t.completed)];
+    return showCompleted(key, vis) ? [...active, ...items.filter((t) => t.completed)] : active;
   };
   return [
     ...section("pinned", v.pinned),

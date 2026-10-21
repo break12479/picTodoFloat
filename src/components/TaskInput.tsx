@@ -97,13 +97,14 @@ export default function TaskInput() {
       {draftImages.map((d) => (
         <div key={d.key} className="thumb-cell" title={d.name}>
           <img src={d.url} alt="" draggable={false} />
-          <span
+          <button
             className="thumb-del"
             title="移除这张图片"
+            aria-label="移除这张图片"
             onClick={() => removeDraftImage(d.key)}
           >
             <Icon name="x" size={10} />
-          </span>
+          </button>
         </div>
       ))}
       <span className="draft-hint">将随新任务一起保存</span>
@@ -176,7 +177,7 @@ export default function TaskInput() {
                 <Icon name="check" size={14} />
                 保存
               </button>
-              <button className="icon-btn" onClick={collapse} title="收起（Esc）">
+              <button className="icon-btn" onClick={collapse} title="收起（Esc）" aria-label="收起便签">
                 <Icon name="x" size={15} />
               </button>
             </div>
@@ -244,6 +245,7 @@ export default function TaskInput() {
 
         <button
           className="icon-btn expand-btn"
+          aria-label="展开为便签"
           onClick={() => setExpanded(true)}
           title="展开为便签（Markdown 实时预览）"
         >
@@ -252,6 +254,7 @@ export default function TaskInput() {
 
         <button
           className="add-btn"
+          aria-label="添加任务"
           onClick={submit}
           disabled={!canSubmit}
           title="添加任务（Enter）"

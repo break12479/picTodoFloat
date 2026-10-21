@@ -8,6 +8,7 @@ import TaskInput from "./components/TaskInput";
 import TaskList from "./components/TaskList";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { usePasteImage } from "./hooks/usePasteImage";
+import { useWindowBehavior } from "./hooks/useWindowBehavior";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useTaskStore } from "./stores/taskStore";
 
@@ -26,12 +27,18 @@ export default function App() {
   const loadSettings = useSettingsStore((s) => s.load);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 85);
   const theme = useSettingsStore((s) => s.settings?.theme ?? "dark");
+  const density = useSettingsStore((s) => s.settings?.density ?? "comfortable");
+  const alwaysOnTop = useSettingsStore((s) => s.settings?.always_on_top ?? true);
+  const fadeWhenIdle = useSettingsStore((s) => s.settings?.fade_when_idle ?? false);
+  const edgeHide = useSettingsStore((s) => s.settings?.edge_hide ?? false);
+  const updateSettings = useSettingsStore((s) => s.update);
 
   const [showSettings, setShowSettings] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
 
   usePasteImage();
   useKeyboardShortcuts();
+  useWindowBehavior({ alwaysOnTop, fadeWhenIdle, edgeHide });
 
   useEffect(() => {
     load();
@@ -62,6 +69,11 @@ export default function App() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  // 列表密度：comfortable / compact（CSS 变量切换）
+  useEffect(() => {
+    document.documentElement.setAttribute("data-density", density);
+  }, [density]);
+
   // 提示条不常驻：几秒后自动收起，也可手动关闭
   useEffect(() => {
     if (!error) return;
@@ -82,6 +94,8 @@ export default function App() {
           <button
             className={`win-btn ${searchOpen ? "active" : ""}`}
             title="搜索（Ctrl+F）"
+            aria-label="搜索"
+            aria-pressed={searchOpen}
             onClick={toggleSearch}
           >
             <Icon name="search" />
@@ -89,6 +103,7 @@ export default function App() {
           <button
             className="win-btn"
             title="全部自动排序（已完成沉底、最近完成在上）"
+            aria-label="全部自动排序"
             onClick={() => autoSort(null)}
           >
             <Icon name="sort" />
@@ -96,6 +111,7 @@ export default function App() {
           <button
             className="win-btn"
             title="归档"
+            aria-label="归档"
             onClick={() => setShowArchive(true)}
           >
             <Icon name="archive" />
@@ -103,14 +119,25 @@ export default function App() {
           <button
             className="win-btn"
             title="设置"
+            aria-label="设置"
             onClick={() => setShowSettings(true)}
           >
             <Icon name="settings" />
           </button>
           <span className="win-sep" />
           <button
+            className={`win-btn ${alwaysOnTop ? "active" : ""}`}
+            title={alwaysOnTop ? "已置顶（点击取消）" : "窗口置顶"}
+            aria-label="窗口置顶"
+            aria-pressed={alwaysOnTop}
+            onClick={() => updateSettings({ always_on_top: !alwaysOnTop })}
+          >
+            <Icon name="pin" />
+          </button>
+          <button
             className="win-btn"
             title="最小化"
+            aria-label="最小化"
             onClick={() => appWindow.minimize()}
           >
             <Icon name="minus" />
@@ -118,6 +145,7 @@ export default function App() {
           <button
             className="win-btn close"
             title="隐藏到托盘"
+            aria-label="隐藏到托盘"
             onClick={() => appWindow.hide()}
           >
             <Icon name="x" />
@@ -136,7 +164,7 @@ export default function App() {
       {error && (
         <div className="toast" role="alert">
           <span className="toast-msg">{error}</span>
-          <button className="icon-btn" onClick={() => setError(null)} title="关闭">
+          <button className="icon-btn" onClick={() => setError(null)} title="关闭" aria-label="关闭提示">
             <Icon name="x" size={13} />
           </button>
         </div>

@@ -77,6 +77,7 @@ export default function DocButton({ task }: Props) {
       <button
         className={`icon-btn doc-btn ${cls}`}
         title={title}
+        aria-label={title}
         onClick={handleClick}
         onContextMenu={(e) => {
           // 自己的菜单，不弹任务菜单

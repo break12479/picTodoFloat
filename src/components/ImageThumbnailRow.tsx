@@ -30,30 +30,41 @@ export default function ImageThumbnailRow({ images, onDelete }: Props) {
         <div key={img.id} className="thumb-cell">
           <img
             src={convertFileSrc(img.thumb_path)}
-            alt=""
+            alt={img.original_name ?? "图片"}
+            role="button"
+            tabIndex={0}
             draggable={false}
             onClick={(e) => {
               e.stopPropagation();
               openPinWindow(img);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                openPinWindow(img);
+              }
+            }}
             title={img.original_name ?? "点击悬浮查看"}
           />
-          <span
+          <button
             className="thumb-del"
             title="删除这张图片"
+            aria-label="删除这张图片"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(img.id);
             }}
           >
             <Icon name="x" size={10} />
-          </span>
+          </button>
         </div>
       ))}
       {overflow && (
         <button
           className="thumb-cell thumb-more"
           title={`展开全部 ${images.length} 张图片`}
+          aria-label={`展开全部 ${images.length} 张图片`}
           onClick={(e) => {
             e.stopPropagation();
             setExpanded(true);

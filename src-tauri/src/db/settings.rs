@@ -1,10 +1,11 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, ToSql};
 
-use crate::models::Settings;
+use crate::models::{Settings, SettingsPatch};
 
 pub fn get(conn: &Connection) -> Result<Settings, String> {
     conn.query_row(
-        "SELECT opacity, auto_start, notes_folder, theme, hide_completed, auto_archive_days, doc_enabled
+        "SELECT opacity, auto_start, notes_folder, theme, hide_completed, auto_archive_days, doc_enabled,
+                density, always_on_top, fade_when_idle, edge_hide, toggle_hotkey
          FROM settings WHERE id = 1",
         [],
         |r| {
@@ -16,78 +17,78 @@ pub fn get(conn: &Connection) -> Result<Settings, String> {
                 hide_completed: r.get::<_, i64>(4)? != 0,
                 auto_archive_days: r.get(5)?,
                 doc_enabled: r.get::<_, i64>(6)? != 0,
+                density: r.get(7)?,
+                always_on_top: r.get::<_, i64>(8)? != 0,
+                fade_when_idle: r.get::<_, i64>(9)? != 0,
+                edge_hide: r.get::<_, i64>(10)? != 0,
+                toggle_hotkey: r.get(11)?,
+                hotkey_error: None,
             })
         },
     )
     .map_err(|e| e.to_string())
 }
 
-/// 局部更新（None = 不改）。notes_folder 传入空串视为清空（回默认目录）。
-#[allow(clippy::too_many_arguments)]
-pub fn update(
-    conn: &Connection,
-    opacity: Option<i64>,
-    auto_start: Option<bool>,
-    notes_folder: Option<String>,
-    theme: Option<String>,
-    hide_completed: Option<bool>,
-    auto_archive_days: Option<i64>,
-    doc_enabled: Option<bool>,
-) -> Result<Settings, String> {
-    if let Some(t) = theme {
-        conn.execute(
-            "UPDATE settings SET theme = ?1 WHERE id = 1",
-            params![t],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(o) = opacity {
-        conn.execute(
-            "UPDATE settings SET opacity = ?1 WHERE id = 1",
-            params![o.clamp(50, 100)],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(a) = auto_start {
-        conn.execute(
-            "UPDATE settings SET auto_start = ?1 WHERE id = 1",
-            params![a as i64],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(nf) = notes_folder {
-        let value: Option<String> = if nf.trim().is_empty() { None } else { Some(nf) };
-        conn.execute(
-            "UPDATE settings SET notes_folder = ?1 WHERE id = 1",
-            params![value],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(hc) = hide_completed {
-        conn.execute(
-            "UPDATE settings SET hide_completed = ?1 WHERE id = 1",
-            params![hc as i64],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(days) = auto_archive_days {
-        conn.execute(
-            "UPDATE settings SET auto_archive_days = ?1 WHERE id = 1",
-            params![days.max(0)],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-    if let Some(de) = doc_enabled {
-        conn.execute(
-            "UPDATE settings SET doc_enabled = ?1 WHERE id = 1",
-            params![de as i64],
-        )
-        .map_err(|e| e.to_string())?;
-    }
+/// 写一列（列名只来自本文件里的常量，不拼用户输入）。
+fn set(conn: &Connection, column: &str, value: impl ToSql) -> Result<(), String> {
     conn.execute(
+        &format!("UPDATE settings SET {column} = ?1 WHERE id = 1"),
+        params![value],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+/// 局部更新（None = 不改），一个事务。
+pub fn update(conn: &Connection, p: &SettingsPatch) -> Result<Settings, String> {
+    if let Some(d) = &p.density {
+        if d != "comfortable" && d != "compact" {
+            return Err(format!("未知的列表密度：{d}"));
+        }
+    }
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    if let Some(t) = &p.theme {
+        set(&tx, "theme", t)?;
+    }
+    if let Some(o) = p.opacity {
+        set(&tx, "opacity", o.clamp(50, 100))?;
+    }
+    if let Some(a) = p.auto_start {
+        set(&tx, "auto_start", a as i64)?;
+    }
+    if let Some(nf) = &p.notes_folder {
+        // 空串视为清空（回默认目录）
+        set(&tx, "notes_folder", Some(nf.as_str()).filter(|v| !v.trim().is_empty()))?;
+    }
+    if let Some(hc) = p.hide_completed {
+        set(&tx, "hide_completed", hc as i64)?;
+    }
+    if let Some(days) = p.auto_archive_days {
+        set(&tx, "auto_archive_days", days.max(0))?;
+    }
+    if let Some(de) = p.doc_enabled {
+        set(&tx, "doc_enabled", de as i64)?;
+    }
+    if let Some(d) = &p.density {
+        set(&tx, "density", d)?;
+    }
+    if let Some(v) = p.always_on_top {
+        set(&tx, "always_on_top", v as i64)?;
+    }
+    if let Some(v) = p.fade_when_idle {
+        set(&tx, "fade_when_idle", v as i64)?;
+    }
+    if let Some(v) = p.edge_hide {
+        set(&tx, "edge_hide", v as i64)?;
+    }
+    if let Some(h) = &p.toggle_hotkey {
+        set(&tx, "toggle_hotkey", h.trim())?;
+    }
+    tx.execute(
         "UPDATE settings SET updated_at = datetime('now') WHERE id = 1",
         [],
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     get(conn)
 }

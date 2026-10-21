@@ -170,6 +170,39 @@ export default function TaskItem({
     return true;
   };
 
+  // 行尾工具（📄 / ⋯）：已关联文档的行照旧占一列（📄 常显）；其余行不预留宽度，
+  // 悬停 / 选中时浮在首行末尾，底下的文字渐隐——窄窗口里文字不会被白白挤掉一截。
+  const inlineTools = docEnabled && !!task.doc_path;
+  const stopRowGestures = {
+    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+    // 按在按钮上不触发拖动（鼠标走 pointerdown，触摸走 touchstart）
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
+  };
+  const menuButton = (
+    <>
+      <button
+        className="icon-btn task-menu-btn"
+        title="更多操作（也可右键）"
+        aria-label="更多操作"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
+        }}
+      >
+        <Icon name="more" size={16} />
+      </button>
+      {menuAt && (
+        <TaskMenu
+          task={task}
+          at={menuAt}
+          onClose={() => setMenuAt(null)}
+          onRequestDelete={onRequestDelete}
+        />
+      )}
+    </>
+  );
+
   // 整行即拖拽区：PointerSensor 要移动 5px 才激活，单击/双击/右键不受影响。
   // 编辑中、展开全文弹层打开时不挂，否则在输入框/弹层里拖选文字会变成拖动任务。
   const rowDragListeners = editing || expanded ? undefined : dragListeners;
@@ -183,7 +216,9 @@ export default function TaskItem({
         selected ? "selected" : ""
       } ${dragOver ? "drag-over" : ""} ${dragging ? "dragging" : ""} ${
         menuAt ? "menu-open" : ""
-      } ${flashing ? "flash" : ""}`}
+      } ${flashing ? "flash" : ""} ${inlineTools ? "inline-tools" : ""} ${
+        !docEnabled ? "tools-narrow" : ""
+      }`}
       onMouseDown={(e) => {
         // Shift+点击做范围多选时，阻止浏览器顺带拖出一片文字选区
         if (e.shiftKey && !editing) e.preventDefault();
@@ -270,43 +305,23 @@ export default function TaskItem({
           </div>
         )}
 
-        {docEnabled && (
-          <div
-            className="task-doc"
-            onClick={(e) => e.stopPropagation()}
-            // 按在 📄 上不触发拖动（鼠标走 pointerdown，触摸走 touchstart），右键是它自己的菜单
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-          >
-            <DocButton task={task} />
-          </div>
+        {inlineTools ? (
+          <>
+            <div className="task-doc" {...stopRowGestures}>
+              <DocButton task={task} />
+            </div>
+            <div className="task-actions" {...stopRowGestures}>
+              {menuButton}
+            </div>
+          </>
+        ) : (
+          !editing && (
+            <div className="task-tools" {...stopRowGestures}>
+              {docEnabled && <DocButton task={task} />}
+              {menuButton}
+            </div>
+          )
         )}
-
-        <div
-          className="task-actions"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          <button
-            className="icon-btn task-menu-btn"
-            title="更多操作（也可右键）"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuAt(menuAt ? null : { x: r.right, y: r.bottom, align: "end" });
-            }}
-          >
-            <Icon name="more" size={16} />
-          </button>
-          {menuAt && (
-            <TaskMenu
-              task={task}
-              at={menuAt}
-              onClose={() => setMenuAt(null)}
-              onRequestDelete={onRequestDelete}
-            />
-          )}
-        </div>
       </div>
 
       {!editing && (hasMore || progress.total > 0) && (

@@ -52,6 +52,7 @@ export default function TaskList() {
   const requestBulkDelete = useTaskStore((s) => s.requestBulkDelete);
   const cancelBulkDelete = useTaskStore((s) => s.cancelBulkDelete);
   const collapsed = useTaskStore((s) => s.collapsed);
+  const doneToggled = useTaskStore((s) => s.doneToggled);
   const hideCompleted = useSettingsStore((s) => s.settings?.hide_completed ?? true);
   const searchOpen = useTaskStore((s) => s.searchOpen);
   const searchQuery = useTaskStore((s) => s.searchQuery);
@@ -84,10 +85,10 @@ export default function TaskList() {
 
   // 生效的多选：只算看得见的。搜索过滤掉、折叠起来的已选项不计数，也不会被批量删除 / 归档 / 拖动
   const selection = useMemo(() => {
-    const visible = visibleTaskIds(tasks, groups, { collapsed, hideCompleted, match });
+    const visible = visibleTaskIds(tasks, groups, { collapsed, hideCompleted, doneToggled, match });
     const selected = new Set(selectedIds);
     return visible.filter((id) => selected.has(id));
-  }, [tasks, groups, collapsed, hideCompleted, match, selectedIds]);
+  }, [tasks, groups, collapsed, hideCompleted, doneToggled, match, selectedIds]);
 
   const view = useMemo(
     () => buildView(filteredTasks, groups),
@@ -251,7 +252,7 @@ export default function TaskList() {
                   <Icon name="trash" size={13} />
                   删除
                 </button>
-                <button className="icon-btn" onClick={clearSelection} title="取消选择">
+                <button className="icon-btn" onClick={clearSelection} title="取消选择（Esc）" aria-label="取消选择">
                   <Icon name="x" size={14} />
                 </button>
               </div>
@@ -287,7 +288,7 @@ export default function TaskList() {
                 ))}
                 <option value="default">默认组</option>
               </select>
-              <button className="icon-btn" onClick={closeSearch} title="关闭搜索（Esc）">
+              <button className="icon-btn" onClick={closeSearch} title="关闭搜索（Esc）" aria-label="关闭搜索">
                 <Icon name="x" size={14} />
               </button>
             </div>

@@ -168,7 +168,7 @@ CREATE INDEX idx_images_task   ON task_images(task_id);
 | Command | 参数 | 返回 |
 | --- | --- | --- |
 | `get_settings` | — | `Settings` |
-| `update_settings` | `patch` | `Settings`（含应用透明度、自启、笔记目录副作用） |
+| `update_settings` | `patch: SettingsPatch`（camelCase，未给的字段不改） | `Settings`。快捷键（重新注册全局快捷键）、开机自启这两项有副作用的先执行，成功才写库，失败返回错误、设置保持原样；返回值带运行时字段 `hotkey_error`（快捷键注册失败原因） |
 | `pick_folder` | — | `string?`（选笔记文件夹） |
 
 ------
