@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { renderMarkdown } from "../lib/markdown";
+import { enableTaskCheckboxes, renderMarkdown } from "../lib/markdown";
 import {
   FENCE_RE,
   LIST_RE,
@@ -94,8 +94,8 @@ function blockHtml(text: string, kind: BlockKind) {
       src = text.slice(m[1].length);
     }
   }
-  // 任务框去掉 disabled 才能点；点击由编辑器接管，改的是源码里的 [ ] / [x]
-  const html = renderMarkdown(src).replace(/(<input[^>]*?) disabled=""/g, "$1");
+  // 任务框可点；点击由编辑器接管，改的是源码里的 [ ] / [x]
+  const html = enableTaskCheckboxes(renderMarkdown(src));
   return { html, indent };
 }
 

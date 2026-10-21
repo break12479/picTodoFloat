@@ -1,8 +1,30 @@
 import { create } from "zustand";
 
-import { flatVisibleIds } from "../lib/order";
+import { byOrder, searchMatcher, visibleTaskIds } from "../lib/order";
 import { invoke } from "../lib/tauri";
 import type { Group, Task, TaskImage } from "../types";
+import { useSettingsStore } from "./settingsStore";
+
+const COLLAPSED_KEY = "pictodo.collapsedGroups";
+
+const readCollapsed = (): string[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+};
+
+/** 输入框里暂存、还没提交的图片（随新任务一起保存）。 */
+export interface DraftImage {
+  key: number;
+  bytes: Uint8Array;
+  name: string;
+  url: string; // object URL，仅供预览
+}
+
+let draftKey = 0;
 
 interface TaskState {
   tasks: Task[];
@@ -12,6 +34,24 @@ interface TaskState {
   error: string | null;
   selectedId: number | null; // 锚点 / 粘贴目标（最后点击）
   selectedIds: number[]; // 多选集合
+  /** 刚贴进图片的任务：滚到可见处并闪一下，让人知道图贴到了哪 */
+  flash: { id: number; at: number } | null;
+  draftImages: DraftImage[];
+  addDraftImages: (images: Omit<DraftImage, "key">[]) => void;
+  removeDraftImage: (key: number) => void;
+  clearDraftImages: () => void;
+
+  /** 折叠起来的分区（容器键），跨重启记忆 */
+  collapsed: string[];
+  toggleCollapsed: (key: string) => void;
+  /** 屏幕上实际显示的任务 id（展示顺序） */
+  visibleIds: () => number[];
+  /** 生效的多选：只算看得见的（搜索过滤掉、折叠起来的不算），按展示顺序 */
+  effectiveSelection: () => number[];
+  /** 待确认的批量删除（多选工具条 / 多选右键菜单发起，TaskList 弹确认框） */
+  bulkDeleteIds: number[] | null;
+  requestBulkDelete: (ids: number[]) => void;
+  cancelBulkDelete: () => void;
 
   // 搜索：query 为空则不生效；scope 为容器键（pinned/default/g{id}），null = 全部
   searchOpen: boolean;
@@ -27,8 +67,13 @@ interface TaskState {
   loadArchived: () => Promise<void>;
   archiveOne: (id: number) => Promise<void>;
   unarchiveOne: (id: number) => Promise<void>;
-  archiveSelected: () => Promise<void>;
-  add: (content: string, groupId?: number | null) => Promise<void>;
+  archiveMany: (ids: number[]) => Promise<void>;
+  /** 新建任务，返回建好的任务（失败 / 空内容返回 null）。allowEmpty：只有图片、没有文字也建。 */
+  add: (
+    content: string,
+    groupId?: number | null,
+    opts?: { allowEmpty?: boolean }
+  ) => Promise<Task | null>;
   update: (id: number, content: string) => Promise<void>;
   toggle: (id: number) => Promise<void>;
   remove: (id: number) => Promise<void>;
@@ -36,7 +81,9 @@ interface TaskState {
   select: (id: number | null) => void;
   clickSelect: (id: number, mods: { shift: boolean; ctrl: boolean }) => void;
   clearSelection: () => void;
-  deleteSelected: () => Promise<void>;
+  deleteMany: (ids: number[]) => Promise<void>;
+  /** 多选「移动到」：移到目标组末尾（保持展示顺序），一个事务 */
+  moveManyToGroup: (ids: number[], groupId: number | null) => Promise<void>;
   applyMultiMove: (
     movedIds: number[],
     targetGroupId: number | null,
@@ -75,6 +122,53 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   error: null,
   selectedId: null,
   selectedIds: [],
+  flash: null,
+  draftImages: [],
+  collapsed: readCollapsed(),
+  bulkDeleteIds: null,
+
+  toggleCollapsed: (key) => {
+    const cur = get().collapsed;
+    const collapsed = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+    set({ collapsed });
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed));
+    } catch {
+      // 存不了就只在本次生效
+    }
+  },
+
+  visibleIds: () => {
+    const { tasks, groups, collapsed, searchOpen, searchQuery, searchScope } = get();
+    return visibleTaskIds(tasks, groups, {
+      collapsed,
+      hideCompleted: useSettingsStore.getState().settings?.hide_completed ?? true,
+      match: searchOpen ? searchMatcher(searchQuery, searchScope) : undefined,
+    });
+  },
+
+  effectiveSelection: () => {
+    const selected = new Set(get().selectedIds);
+    return get().visibleIds().filter((id) => selected.has(id));
+  },
+
+  requestBulkDelete: (ids) => set({ bulkDeleteIds: ids.length ? ids : null }),
+  cancelBulkDelete: () => set({ bulkDeleteIds: null }),
+
+  addDraftImages: (images) =>
+    set((s) => ({
+      draftImages: [...s.draftImages, ...images.map((d) => ({ ...d, key: ++draftKey }))],
+    })),
+  removeDraftImage: (key) =>
+    set((s) => {
+      s.draftImages.filter((d) => d.key === key).forEach((d) => URL.revokeObjectURL(d.url));
+      return { draftImages: s.draftImages.filter((d) => d.key !== key) };
+    }),
+  clearDraftImages: () =>
+    set((s) => {
+      s.draftImages.forEach((d) => URL.revokeObjectURL(d.url));
+      return { draftImages: [] };
+    }),
 
   searchOpen: false,
   searchQuery: "",
@@ -94,10 +188,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ selectedId: id, selectedIds: id == null ? [] : [id] }),
 
   clickSelect: (id, mods) => {
-    const { selectedIds, selectedId, tasks, groups } = get();
+    const { selectedIds, selectedId } = get();
     if (mods.shift && selectedId != null) {
-      // 范围选择：锚点到当前，按展示顺序
-      const order = flatVisibleIds(tasks, groups);
+      // 范围选择：锚点到当前，按展示顺序，只含看得见的任务
+      const order = get().visibleIds();
       const a = order.indexOf(selectedId);
       const b = order.indexOf(id);
       if (a >= 0 && b >= 0) {
@@ -121,16 +215,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   clearSelection: () => set({ selectedIds: [], selectedId: null }),
 
-  deleteSelected: async () => {
-    const ids = get().selectedIds;
+  deleteMany: async (ids) => {
     if (ids.length === 0) return;
     const prev = get().tasks;
     const prevArchived = get().archivedTasks;
     set({
       tasks: prev.filter((t) => !ids.includes(t.id)),
       archivedTasks: prevArchived.filter((t) => !ids.includes(t.id)),
-      selectedIds: [],
-      selectedId: null,
+      selectedIds: get().selectedIds.filter((x) => !ids.includes(x)),
+      selectedId: ids.includes(get().selectedId ?? NaN) ? null : get().selectedId,
     });
     try {
       await invoke<boolean>("delete_tasks", { ids });
@@ -185,8 +278,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  archiveSelected: async () => {
-    const ids = get().selectedIds;
+  archiveMany: async (ids) => {
     if (ids.length === 0) return;
     const prevTasks = get().tasks;
     const moved = prevTasks.filter((t) => ids.includes(t.id));
@@ -200,8 +292,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         })),
         ...get().archivedTasks,
       ],
-      selectedIds: [],
-      selectedId: null,
+      selectedIds: get().selectedIds.filter((x) => !ids.includes(x)),
+      selectedId: ids.includes(get().selectedId ?? NaN) ? null : get().selectedId,
     });
     try {
       await invoke<boolean>("archive_tasks", { ids, archived: true });
@@ -236,6 +328,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
+  moveManyToGroup: async (ids, groupId) => {
+    const moving = new Set(ids);
+    // 置顶任务只改所属组，不参与目标组的排序（否则会打乱置顶分区的顺序）
+    const stay = get()
+      .tasks.filter((t) => !t.pinned && !moving.has(t.id) && (t.group_id ?? null) === groupId)
+      .sort(byOrder)
+      .map((t) => t.id);
+    const nonPinnedMoving = ids.filter((id) => !get().tasks.find((t) => t.id === id)?.pinned);
+    await get().applyMultiMove(ids, groupId, [...stay, ...nonPinnedMoving]);
+  },
+
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -267,9 +370,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  add: async (content, groupId = null) => {
+  add: async (content, groupId = null, opts) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed && !opts?.allowEmpty) return null;
     try {
       const task = await invoke<Task>("add_task", {
         content: trimmed,
@@ -280,8 +383,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         selectedId: task.id,
         selectedIds: [task.id],
       });
+      return task;
     } catch (e) {
       set({ error: String(e) });
+      return null;
     }
   },
 
@@ -341,6 +446,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           t.id === taskId ? { ...t, images: [...t.images, img] } : t
         ),
         error: null,
+        flash: { id: taskId, at: Date.now() },
       });
     } catch (e) {
       set({ error: String(e) });

@@ -1,42 +1,51 @@
 import { useEffect } from "react";
 
+import { clipboardImage, droppedImages, pastedName, stageDraftImages } from "../lib/images";
 import { useTaskStore } from "../stores/taskStore";
 
 /**
- * 全局粘贴（PixPin 式 Ctrl+V）：把剪贴板里的图片贴入当前选中的任务。
- * 主路径——从 clipboardData.items 找 image/*，与 P0 验证一致。
+ * 全局粘贴 / 拖放图片（PixPin 式 Ctrl+V）。
+ * - 输入框正在写新任务时，由 TaskInput 自己接住（图片随新任务保存），不会走到这里；
+ * - 有选中的任务 → 贴到该任务（任务行会滚到可见处并闪一下）；
+ * - 没有选中任务 → 暂存到输入框，写点文字回车即成为新任务。
+ * 拖放：没有落在任务行 / 输入框上的图片同样暂存到输入框。WebView 对没人处理的文件拖放
+ * 默认会直接打开那个文件，整个应用界面会被替换掉，所以这里一律接住。
  */
 export function usePasteImage() {
   const addImage = useTaskStore((s) => s.addImage);
-  const select = useTaskStore((s) => s.select);
-  const setError = useTaskStore((s) => s.setError);
 
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      const imgItem = Array.from(items).find((it) =>
-        it.type.startsWith("image/")
-      );
-      if (!imgItem) return; // 无图片 → 交给默认行为（如粘贴文本）
+      const file = clipboardImage(e.clipboardData);
+      if (!file) return; // 无图片 → 交给默认行为（如粘贴文本）
+      e.preventDefault();
 
       const selectedId = useTaskStore.getState().selectedId;
       if (selectedId == null) {
-        setError("请先点选一个任务，再 Ctrl+V 粘贴图片");
+        await stageDraftImages([file], [pastedName(file)]);
         return;
       }
-
-      const file = imgItem.getAsFile();
-      if (!file) return;
-      e.preventDefault();
-
-      const ext = imgItem.type.split("/")[1] || "png";
       const buf = new Uint8Array(await file.arrayBuffer());
-      await addImage(selectedId, buf, `paste-${Date.now()}.${ext}`);
+      await addImage(selectedId, buf, pastedName(file));
+    };
+
+    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+    const onDragOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e) || e.defaultPrevented) return; // 任务行 / 输入框已经处理过
+      e.preventDefault();
+      stageDraftImages(droppedImages(e.dataTransfer));
     };
 
     document.addEventListener("paste", onPaste);
-    return () => document.removeEventListener("paste", onPaste);
-  }, [addImage, select, setError]);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("paste", onPaste);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [addImage]);
 }

@@ -13,7 +13,8 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
-import { buildView, containerKeyOf, flatVisibleIds } from "../lib/order";
+import { buildView, containerKeyOf, searchMatcher, visibleTaskIds } from "../lib/order";
+import { useSettingsStore } from "../stores/settingsStore";
 import { useTaskStore } from "../stores/taskStore";
 import type { Task } from "../types";
 import ConfirmDialog from "./ConfirmDialog";
@@ -45,8 +46,13 @@ export default function TaskList() {
   const addGroup = useTaskStore((s) => s.addGroup);
   const reorderGroups = useTaskStore((s) => s.reorderGroups);
   const clearSelection = useTaskStore((s) => s.clearSelection);
-  const deleteSelected = useTaskStore((s) => s.deleteSelected);
-  const archiveSelected = useTaskStore((s) => s.archiveSelected);
+  const deleteMany = useTaskStore((s) => s.deleteMany);
+  const archiveMany = useTaskStore((s) => s.archiveMany);
+  const bulkDeleteIds = useTaskStore((s) => s.bulkDeleteIds);
+  const requestBulkDelete = useTaskStore((s) => s.requestBulkDelete);
+  const cancelBulkDelete = useTaskStore((s) => s.cancelBulkDelete);
+  const collapsed = useTaskStore((s) => s.collapsed);
+  const hideCompleted = useSettingsStore((s) => s.settings?.hide_completed ?? true);
   const searchOpen = useTaskStore((s) => s.searchOpen);
   const searchQuery = useTaskStore((s) => s.searchQuery);
   const searchScope = useTaskStore((s) => s.searchScope);
@@ -55,7 +61,6 @@ export default function TaskList() {
   const closeSearch = useTaskStore((s) => s.closeSearch);
 
   const [pending, setPending] = useState<Task | null>(null);
-  const [confirmMulti, setConfirmMulti] = useState(false);
   const [newGroup, setNewGroup] = useState<string | null>(null); // null = 未在新建
   const [activeId, setActiveId] = useState<number | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
@@ -71,15 +76,18 @@ export default function TaskList() {
 
   const activelySearching = searchOpen && searchQuery.trim().length > 0;
 
-  const filteredTasks = useMemo(() => {
-    if (!activelySearching) return tasks;
-    const q = searchQuery.trim().toLowerCase();
-    return tasks.filter((t) => {
-      if (!t.content.toLowerCase().includes(q)) return false;
-      if (searchScope && containerKeyOf(t) !== searchScope) return false;
-      return true;
-    });
-  }, [tasks, activelySearching, searchQuery, searchScope]);
+  const match = useMemo(
+    () => (searchOpen ? searchMatcher(searchQuery, searchScope) : undefined),
+    [searchOpen, searchQuery, searchScope]
+  );
+  const filteredTasks = useMemo(() => (match ? tasks.filter(match) : tasks), [tasks, match]);
+
+  // 生效的多选：只算看得见的。搜索过滤掉、折叠起来的已选项不计数，也不会被批量删除 / 归档 / 拖动
+  const selection = useMemo(() => {
+    const visible = visibleTaskIds(tasks, groups, { collapsed, hideCompleted, match });
+    const selected = new Set(selectedIds);
+    return visible.filter((id) => selected.has(id));
+  }, [tasks, groups, collapsed, hideCompleted, match, selectedIds]);
 
   const view = useMemo(
     () => buildView(filteredTasks, groups),
@@ -174,12 +182,9 @@ export default function TaskList() {
     }
 
     // 被拖动集合：active 在多选内则整组（按展示顺序、排除置顶），否则单个
-    const flat = flatVisibleIds(tasks, groups);
     const dragging =
-      selectedIds.includes(activeIdN) && selectedIds.length > 1
-        ? flat.filter(
-            (id) => selectedIds.includes(id) && !tasksById.get(id)?.pinned
-          )
+      selection.includes(activeIdN) && selection.length > 1
+        ? selection.filter((id) => !tasksById.get(id)?.pinned)
         : [activeIdN];
     if (dragging.length === 0) return;
     const draggingSet = new Set(dragging);
@@ -221,7 +226,7 @@ export default function TaskList() {
   const activeGroup =
     activeGroupId != null ? groups.find((g) => g.id === activeGroupId) ?? null : null;
   const dragCount =
-    activeId != null && selectedIds.includes(activeId) ? selectedIds.length : 1;
+    activeId != null && selection.includes(activeId) ? selection.length : 1;
 
   const commitNewGroup = () => {
     const name = newGroup?.trim();
@@ -232,17 +237,17 @@ export default function TaskList() {
   return (
     <div className="task-list">
       {/* 列表头：搜索栏 / 多选工具条放在滚动区之外，不随列表滚走、也不遮挡条目 */}
-      {(searchOpen || selectedIds.length >= 2) && (
+      {(searchOpen || selection.length >= 2) && (
         <div className="list-head">
-          {selectedIds.length >= 2 && (
+          {selection.length >= 2 && (
             <div className="selection-bar">
-              <span>已选 {selectedIds.length} 项</span>
+              <span>已选 {selection.length} 项</span>
               <div className="selection-actions">
-                <button className="sel-btn" onClick={archiveSelected}>
+                <button className="sel-btn" onClick={() => archiveMany(selection)}>
                   <Icon name="archive" size={13} />
                   归档
                 </button>
-                <button className="sel-btn danger" onClick={() => setConfirmMulti(true)}>
+                <button className="sel-btn danger" onClick={() => requestBulkDelete(selection)}>
                   <Icon name="trash" size={13} />
                   删除
                 </button>
@@ -298,10 +303,9 @@ export default function TaskList() {
             </div>
             <div className="empty-title">还没有任务</div>
             <div className="empty-hint">
-              在下方输入框写下第一条任务
+              在下方输入框写下第一条任务，截图可直接粘贴进来
               <br />
-              <kbd>Ctrl</kbd>+<kbd>N</kbd> 聚焦输入 · 选中任务后 <kbd>Ctrl</kbd>+
-              <kbd>V</kbd> 贴图
+              <kbd>Ctrl</kbd>+<kbd>N</kbd> 聚焦输入 · <kbd>Ctrl</kbd>+<kbd>V</kbd> 贴图
             </div>
           </div>
         )}
@@ -410,13 +414,13 @@ export default function TaskList() {
         />
       )}
 
-      {confirmMulti && (
+      {bulkDeleteIds && (
         <ConfirmDialog
-          message={`确认删除选中的 ${selectedIds.length} 项任务？`}
-          onCancel={() => setConfirmMulti(false)}
+          message={`确认删除选中的 ${bulkDeleteIds.length} 项任务？`}
+          onCancel={cancelBulkDelete}
           onConfirm={() => {
-            deleteSelected();
-            setConfirmMulti(false);
+            deleteMany(bulkDeleteIds);
+            cancelBulkDelete();
           }}
         />
       )}

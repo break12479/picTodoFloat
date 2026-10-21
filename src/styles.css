@@ -446,14 +446,27 @@ kbd {
   background: rgba(var(--accent-rgb), 0.14);
 }
 
+/* 刚贴进图片的任务闪一下，告诉用户图贴到了哪 */
+.task-item.flash {
+  animation: task-flash 0.9s ease-out;
+}
+
+@keyframes task-flash {
+  from {
+    background: rgba(var(--accent-rgb), 0.3);
+    border-color: var(--accent);
+  }
+}
+
 .task-main {
   display: flex;
   align-items: flex-start; /* 多行文本时，勾选框对齐首行而不是垂直居中 */
   gap: 10px;
 }
 
-/* 圆形勾选框（替代原生方框：原生控件在深色主题下是一块白方块） */
-.task-item input[type="checkbox"] {
+/* 圆形勾选框（替代原生方框：原生控件在深色主题下是一块白方块）。
+   只给任务自己的完成框；文本里 Markdown 清单的框另有样式，免得两者长得一样。 */
+.task-main > input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
   flex: 0 0 auto;
@@ -467,12 +480,12 @@ kbd {
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.task-item input[type="checkbox"]:hover {
+.task-main > input[type="checkbox"]:hover {
   border-color: var(--accent);
   background-color: rgba(var(--accent-rgb), 0.12);
 }
 
-.task-item input[type="checkbox"]:checked {
+.task-main > input[type="checkbox"]:checked {
   border-color: var(--accent-solid);
   background-color: var(--accent-solid);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
@@ -502,6 +515,25 @@ kbd {
 .task-more,
 .thumb-row {
   padding-left: 26px;
+}
+
+.task-more {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.check-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.check-progress.all-done {
+  color: var(--accent);
 }
 
 .text-expand-btn {
@@ -722,6 +754,40 @@ kbd {
 .md-content img {
   max-width: 100%;
   border-radius: 4px;
+}
+
+/* Markdown 任务清单（- [ ]）：去掉圆点，方形小框放在圆点的位置；可点击勾选 */
+.md-content li:has(> input[type="checkbox"], > p:first-child > input[type="checkbox"]) {
+  list-style: none;
+}
+
+.md-content li input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  margin: 0 6px 0 -18px;
+  vertical-align: -1.5px;
+  border: 1.5px solid var(--check-border);
+  border-radius: 3.5px;
+  background: transparent center / 9px 9px no-repeat;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.md-content li input[type="checkbox"]:hover {
+  border-color: var(--accent);
+}
+
+.md-content li input[type="checkbox"]:checked {
+  border-color: var(--text-faint);
+  background-color: var(--text-faint);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+/* 已勾的清单项变淡，和未完成的一眼区分 */
+.md-content li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked) {
+  color: var(--text-faint);
 }
 
 .md-content table {
@@ -1072,6 +1138,29 @@ kbd {
   gap: 6px;
 }
 
+.thumb-row.expanded {
+  flex-wrap: wrap;
+}
+
+/* 「+N」格：按钮，点了展开全部图片 */
+.thumb-more {
+  font: inherit;
+}
+
+.thumb-collapse {
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.thumb-collapse:hover {
+  color: var(--accent);
+}
+
 .thumb-cell {
   position: relative;
   width: 40px;
@@ -1181,6 +1270,24 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 10px;
   transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+/* 输入框里暂存的图片（随新任务一起保存） */
+.draft-images {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 6px;
+}
+
+.note-overlay .draft-images {
+  padding: 0;
+}
+
+.draft-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
 }
 
 .task-input:focus-within {
@@ -1372,18 +1479,6 @@ kbd {
 .live-block.code pre,
 .live-block.table table {
   margin: 2px 0;
-}
-
-/* 任务列表：去掉圆点，勾选框放在圆点的位置 */
-.live-block li:has(> input[type="checkbox"]) {
-  list-style: none;
-}
-
-.live-block li > input[type="checkbox"] {
-  margin: 0 6px 0 -18px;
-  vertical-align: -2px;
-  cursor: pointer;
-  accent-color: var(--accent-solid);
 }
 
 .live-block a {

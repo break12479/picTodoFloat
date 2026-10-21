@@ -40,7 +40,9 @@ export default function GroupSection({
   const hideCompleted = useSettingsStore((s) => s.settings?.hide_completed ?? true);
   const setHideCompleted = useSettingsStore((s) => s.setHideCompleted);
 
-  const [collapsed, setCollapsed] = useState(false);
+  // 折叠状态放在 store 里：跨重启记忆，也让多选 / 批量操作知道哪些任务看不见
+  const collapsed = useTaskStore((s) => s.collapsed.includes(containerKey));
+  const toggleCollapsed = useTaskStore((s) => s.toggleCollapsed);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(title);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -90,7 +92,7 @@ export default function GroupSection({
       >
         <button
           className={`group-collapse ${collapsed ? "" : "open"}`}
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => toggleCollapsed(containerKey)}
           title={collapsed ? "展开" : "折叠"}
         >
           <Icon name="chevron" size={13} />
