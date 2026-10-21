@@ -20,6 +20,7 @@ import type { Task } from "../types";
 import ConfirmDialog from "./ConfirmDialog";
 import GroupSection from "./GroupSection";
 import Icon from "./Icon";
+import SelectChip from "./SelectChip";
 import TaskItem from "./TaskItem";
 
 const noop = () => {};
@@ -273,21 +274,18 @@ export default function TaskList() {
                   if (e.key === "Escape") closeSearch();
                 }}
               />
-              <select
-                className="select-chip search-scope"
+              <SelectChip
+                className="search-scope"
                 value={searchScope ?? ""}
-                onChange={(e) => setSearchScope(e.target.value || null)}
+                onChange={(v) => setSearchScope(v || null)}
                 title="搜索范围"
-              >
-                <option value="">全部</option>
-                <option value="pinned">置顶</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={`g${g.id}`}>
-                    {g.name}
-                  </option>
-                ))}
-                <option value="default">默认组</option>
-              </select>
+                options={[
+                  { value: "", label: "全部" },
+                  { value: "pinned", label: "置顶" },
+                  ...groups.map((g) => ({ value: `g${g.id}`, label: g.name })),
+                  { value: "default", label: "默认组" },
+                ]}
+              />
               <button className="icon-btn" onClick={closeSearch} title="关闭搜索（Esc）" aria-label="关闭搜索">
                 <Icon name="x" size={14} />
               </button>

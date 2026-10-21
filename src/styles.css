@@ -35,7 +35,7 @@
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a3a3ad' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   --titlebar-h: 36px;
-  --radius-window: 12px;
+  --radius-window: 8px;
 
   /* 列表密度（设置里可切到「紧凑」） */
   --task-font: 14.5px;
@@ -248,22 +248,37 @@ kbd {
     10px 10px;
   color: var(--text-dim);
   font-size: 12px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
-  outline: none;
   transition: background-color 0.12s, color 0.12s;
 }
 
-.select-chip:hover {
+.select-chip:hover,
+.select-chip.open {
   background-color: var(--btn-bg-hover);
   color: var(--text);
 }
 
-.select-chip option {
-  background: var(--panel-solid);
-  color: var(--text);
+/* SelectChip 弹出的选项列表：宽度跟随按钮，不用菜单默认的 168px */
+.select-menu {
+  min-width: 0;
+  outline: none;
+}
+
+.select-menu .popover-item.active {
+  background: var(--hover-strong);
+}
+
+/* 勾放在右侧，选项文字才能和按钮里的文字对齐 */
+.select-menu .popover-check {
+  margin-left: auto;
+}
+
+.select-menu .popover-item[aria-selected="true"] {
+  color: var(--accent);
 }
 
 /* ---- 窗口骨架 ---- */
