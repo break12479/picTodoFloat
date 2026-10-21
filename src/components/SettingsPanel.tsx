@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../stores/settingsStore";
 import HotkeyField from "./HotkeyField";
 import Icon from "./Icon";
+import SelectChip from "./SelectChip";
 
 interface Props {
   onClose: () => void;
@@ -174,18 +175,18 @@ export default function SettingsPanel({ onClose }: Props) {
                 完成后自动归档
                 <span className="settings-hint">超过所选天数后移入「归档」</span>
               </span>
-              <select
-                className="select-chip"
+              <SelectChip
                 value={settings?.auto_archive_days ?? 0}
-                aria-label="完成后自动归档"
-                onChange={(e) => update({ auto_archive_days: Number(e.target.value) })}
-              >
-                <option value={0}>关闭</option>
-                <option value={3}>3 天后</option>
-                <option value={7}>7 天后</option>
-                <option value={14}>14 天后</option>
-                <option value={30}>30 天后</option>
-              </select>
+                ariaLabel="完成后自动归档"
+                onChange={(v) => update({ auto_archive_days: v })}
+                options={[
+                  { value: 0, label: "关闭" },
+                  { value: 3, label: "3 天后" },
+                  { value: 7, label: "7 天后" },
+                  { value: 14, label: "14 天后" },
+                  { value: 30, label: "30 天后" },
+                ]}
+              />
             </div>
           </section>
 

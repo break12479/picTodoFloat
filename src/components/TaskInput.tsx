@@ -5,6 +5,7 @@ import { handleMarkdownKey, isComposingKey } from "../lib/mdEdit";
 import { useTaskStore } from "../stores/taskStore";
 import Icon from "./Icon";
 import LiveMarkdownEditor from "./LiveMarkdownEditor";
+import SelectChip from "./SelectChip";
 
 type NoteMode = "live" | "source";
 const NOTE_MODE_KEY = "pictodo.noteMode";
@@ -214,21 +215,16 @@ export default function TaskInput() {
     <div className="task-input-wrap" onPaste={onPaste} onDrop={onDrop}>
       {draftStrip}
       <div className="task-input">
-        <select
-          className="select-chip input-group-pick"
+        <SelectChip
+          className="input-group-pick"
           value={groupId ?? ""}
           title="添加到分组"
-          onChange={(e) =>
-            setGroupId(e.target.value ? Number(e.target.value) : null)
-          }
-        >
-          <option value="">默认组</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "默认组" },
+            ...groups.map((g) => ({ value: g.id, label: g.name })),
+          ]}
+          onChange={(v) => setGroupId(v === "" ? null : Number(v))}
+        />
 
         <textarea
           ref={taRef}
